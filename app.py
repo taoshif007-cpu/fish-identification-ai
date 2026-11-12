@@ -27,13 +27,15 @@ st.markdown("""
        padding: 1.6rem 1.8rem; border-radius: 16px; margin-bottom: 1.2rem;}
 .hero h1 {color: white; margin: 0; font-size: clamp(1.4rem, 4vw, 2.2rem);}
 .hero p {margin: .3rem 0 0 0; opacity: .95;}
-.card {background: white; border: 1px solid #bae6fd; border-radius: 14px; padding: 1rem 1.2rem; margin-bottom: .8rem;}
-.card h4 {margin: 0 0 .4rem 0; color: #0e7490;}
-.species {font-size: 1.6rem; font-weight: 700; color: #0c4a6e;}
-.sci {font-style: italic; color: #0891b2;}
+.card {background: white; color: #0c4a6e; border: 1px solid #bae6fd; border-radius: 14px; padding: 1rem 1.2rem; margin-bottom: .8rem;}
+.card p, .card div, .card span, .card b {color: #0c4a6e;}
+.card h4 {margin: 0 0 .4rem 0; color: #0e7490 !important;}
+.card .species {font-size: 1.6rem; font-weight: 700; color: #0c4a6e;}
+.card .sci {font-style: italic; color: #0891b2;}
 .badge {display: inline-block; padding: .2rem .7rem; border-radius: 999px; font-size: .8rem; font-weight: 600;}
 .ok {background:#cffafe; color:#155e75;} .mid {background:#fef3c7; color:#92400e;} .bad {background:#fee2e2; color:#991b1b;}
-.small {font-size: .82rem; color: #475569;}
+.small {font-size: .82rem;}
+.card .small {color: #475569;}
 </style>
 """, unsafe_allow_html=True)
 
