@@ -1,0 +1,7 @@
+# Used by the Streamlit app (Streamlit Community Cloud installs these).
+# Training happens in Google Colab, which already has its own libraries.
+streamlit>=1.40,<2
+tensorflow-cpu==2.19.0
+numpy<2.2
+pandas>=2.0
+pillow>=10.0

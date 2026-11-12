@@ -1,0 +1,16 @@
+{
+  "tensorflow_version": "2.21.0",
+  "img_size": 224,
+  "test_accuracy": 0.9236640930175781,
+  "test_loss": 0.18984735012054443,
+  "classes": [
+    "catla",
+    "freshwater_shark",
+    "grass_carp",
+    "long_whiskered_catfish",
+    "mrigal",
+    "nile_tilapia",
+    "rohu",
+    "silver_carp"
+  ]
+}
