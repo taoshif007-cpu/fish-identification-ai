@@ -131,8 +131,13 @@ def load_model():
 
 
 @st.cache_data
-def load_species_info():
-    """Prefer the open-data master table; fall back to the legacy CSV."""
+def load_species_info(data_stamp: str):
+    """Prefer the open-data master table; fall back to the legacy CSV.
+
+    data_stamp identifies the CSV file's current mtime+size so the cache
+    refreshes when the data file changes (st.cache_data otherwise keys only
+    on the function code and would keep serving the old table after a
+    redeploy that only changed the CSV)."""
     path = MASTER_PATH if MASTER_PATH.exists() else INFO_PATH
     df = pd.read_csv(path, encoding="utf-8-sig").fillna("")
     info = {row["class_id"]: row for row in df.to_dict("records")}
@@ -234,7 +239,9 @@ if not (MODEL_PATH.exists() and CLASSES_PATH.exists()
 
 try:
     model, class_names = load_model()
-    info, info_source = load_species_info()
+    _data_path = MASTER_PATH if MASTER_PATH.exists() else INFO_PATH
+    _stat = _data_path.stat()
+    info, info_source = load_species_info(f"{_stat.st_mtime_ns}-{_stat.st_size}")
 except Exception as err:  # noqa: BLE001
     st.error(f"Could not load the model. Check that the TensorFlow version in requirements.txt "
              f"matches the one used for training.\n\nDetails: {err}")
