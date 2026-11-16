@@ -73,6 +73,48 @@ div[data-testid="stVerticalBlockBorderWrapper"] {background: linear-gradient(120
 .stButton button[kind="primary"]:active, div.stButton > button:active {transform: translateY(0);}
 /* ---- progress bar: gradient fill ---- */
 div.stProgress > div > div > div > div {background: linear-gradient(90deg,#06b6d4,#0284c7,#059669);}
+/* ---- whole-interface light animation pack ---- */
+/* soft animated water-tinted page background */
+.stApp {background: linear-gradient(160deg,#f0fdfa,#f0f9ff,#ecfdf5,#f0f9ff);
+       background-size: 300% 300%; animation: heroFlow 24s ease infinite;}
+/* everything rises in gently on load, slight stagger via child order */
+.block-container > div {animation: fadeInUp .55s ease both;}
+.block-container > div:nth-child(2) {animation-delay: .06s;}
+.block-container > div:nth-child(3) {animation-delay: .12s;}
+.block-container > div:nth-child(4) {animation-delay: .18s;}
+/* hero: a slow light sweep shining across the banner */
+.hero {position: relative; overflow: hidden;}
+.hero::after {content: ""; position: absolute; top: 0; left: -80%; width: 55%; height: 100%;
+       background: linear-gradient(100deg, transparent, rgba(255,255,255,.28), transparent);
+       transform: skewX(-18deg); animation: heroShine 5.5s ease-in-out infinite; pointer-events: none;}
+@keyframes heroShine {0%,55% {left: -80%;} 85%,100% {left: 130%;}}
+/* command bar breathes in and lifts a touch on hover */
+div[data-testid="stVerticalBlockBorderWrapper"] {animation: fadeInUp .6s ease both;
+       transition: transform .25s ease, box-shadow .25s ease;}
+div[data-testid="stVerticalBlockBorderWrapper"]:hover {transform: translateY(-2px);
+       box-shadow: 0 10px 26px rgba(8,145,178,.22);}
+/* sidebar: gentle slide-in + water tint */
+section[data-testid="stSidebar"] {background: linear-gradient(180deg,#f0fdfa,#f0f9ff);
+       animation: sidebarIn .5s ease both;}
+@keyframes sidebarIn {from {opacity: 0; transform: translateX(-12px);} to {opacity: 1; transform: translateX(0);}}
+section[data-testid="stSidebar"] h2 {background: linear-gradient(90deg,#0e7490,#059669);
+       -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;}
+/* section headings get the river gradient */
+.stApp h2, .stApp h3 {background: linear-gradient(90deg,#0e7490,#0284c7,#059669);
+       -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;}
+/* photos fade in and grow a little on hover */
+.stImage img {animation: fadeInUp .5s ease both; border-radius: 12px;
+       transition: transform .3s ease, box-shadow .3s ease;}
+.stImage img:hover {transform: scale(1.015); box-shadow: 0 10px 24px rgba(8,145,178,.25);}
+/* upload dropzone + note field: smooth focus glow */
+div[data-testid="stFileUploaderDropzone"] {transition: box-shadow .25s ease, border-color .25s ease;}
+div[data-testid="stFileUploaderDropzone"]:hover {box-shadow: 0 0 0 3px rgba(6,182,212,.25);}
+div[data-testid="stTextInput"] input {transition: box-shadow .25s ease, border-color .25s ease;}
+div[data-testid="stTextInput"] input:focus {box-shadow: 0 0 0 3px rgba(6,182,212,.30); border-color: #0891b2;}
+/* alerts, tables and badges animate in too */
+div[data-testid="stAlert"], div[data-testid="stDataFrame"] {animation: fadeInUp .5s ease both;}
+.badge {animation: badgePop .45s ease both;}
+@keyframes badgePop {from {opacity: 0; transform: scale(.85);} to {opacity: 1; transform: scale(1);}}
 /* ---- accessibility: honour reduced motion ---- */
 @media (prefers-reduced-motion: reduce) {* {animation: none !important; transition: none !important;}}
 </style>
@@ -200,12 +242,22 @@ except Exception as err:  # noqa: BLE001
 
 known = [name_of(c, info) for c in class_names if c != UNKNOWN_CLASS]
 with st.sidebar:
-    st.header("About")
-    st.write(f"This model only knows **{len(known)} species**:")
+    st.header("🌊 About AquaPorichoy")
+    st.write("**AquaPorichoy** — *“aquatic identity”* — identifies aquatic species "
+             "found in Bangladesh from a photo, and shows the species name with its "
+             "classification, habitat and biodiversity.")
+    st.write("**How to use:** attach a photo in the command bar, add an optional "
+             "note if you like, and press **🔍 Identify**.")
+    st.write(f"Species profiles are powered by open data (GBIF, iNaturalist, "
+             f"FishBase / SeaLifeBase) covering **{len(info)} species** — fish, "
+             "aquatic mammals, crustaceans and mollusks.")
+    st.write(f"Photo identification currently recognises **{len(known)} species**:")
     for n in known:
         st.write(f"• {n}")
-    st.caption("It cannot identify any other species. If your fish is not in this list, "
-               "the result will be wrong even if the app sounds confident.")
+    st.caption("More species are on the way — their profiles are already data-ready, "
+               "and identification expands with the next model training. If a photo "
+               "is not one of the recognised species, AquaPorichoy says it cannot "
+               "identify it reliably instead of guessing.")
     st.caption(f"Biological information comes from {info_source} and is marked with its "
                "verification status. Predictions are AI estimates, not expert identification.")
 
