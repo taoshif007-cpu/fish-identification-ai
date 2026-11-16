@@ -19,3 +19,41 @@ green_mussel,Green Mussel,,Perna viridis,Mollusk,Non-fish catalogue species (GBI
 blood_clam,Blood Clam,Teppa,Tegillarca granosa,Mollusk,"Non-fish catalogue species. GBIF accepts Tegillarca granosa; Anadara granosa is a synonym pointing to the same GBIF species key (5855403). No model class - catalogue only."
 freshwater_snail,Apple Snail,,Pila globosa,Mollusk,Non-fish catalogue species (GBIF exact match). Local name left blank rather than guessed. No model class - catalogue only.
 loligo_squid,Indian Ocean Squid,,Uroteuthis duvaucelii,Mollusk,Non-fish catalogue species - GBIF match checked and clean (EXACT / ACCEPTED, key 2290315), so kept. Local name left blank. No model class - catalogue only.
+pabda_catfish,Pabda Catfish,Pabda,Ompok pabda,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+rita,Rita,Rita,Rita rita,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+chital,Clown Knifefish,Chital,Chitala chitala,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+foli,Bronze Featherback,Foli,Notopterus notopterus,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+koi_climbing_perch,Climbing Perch,Koi,Anabas testudineus,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+shing,Stinging Catfish,Shing,Heteropneustes fossilis,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+magur,Walking Catfish,Magur,Clarias batrachus,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+tengra,Tengra Catfish,Tengra,Mystus tengara,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+gulsha,Gangetic Mystus,Gulsha,Mystus cavasius,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+punti,Pool Barb,Punti,Puntius sophore,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+tit_punti,Ticto Barb,Tit Punti,Puntius ticto,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+mola_carplet,Mola Carplet,Mola,Amblypharyngodon mola,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+dhela,Dhela,Dhela,Osteobrama cotio,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+chapila,Indian River Shad,Chapila,Gudusia chapra,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+kachki,Ganges River Sprat,Kachki,Corica soborna,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+zigzag_eel,Zigzag Eel,Sal Baim,Mastacembelus armatus,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+shoal,Striped Snakehead,Shoal,Channa striata,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+taki,Spotted Snakehead,Taki,Channa punctata,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+gojar,Great Snakehead,Gojar,Channa marulius,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+bata,Bata,Bata,Labeo bata,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+kalibaus,Orangefin Labeo,Kalibaus,Labeo calbasu,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+gonia,Kuria Labeo,Gonia,Labeo gonius,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+pangas,Striped Catfish,Pangas,Pangasianodon hypophthalmus,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+thai_sarputi,Java Barb,Thai Sarputi,Barbonymus gonionotus,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+koral,Barramundi,Koral,Lates calcarifer,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+loitta,Bombay Duck,Loitta,Harpadon nehereus,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+panna_croaker,Pama Croaker,Panna,Otolithoides pama,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+chinese_silver_pomfret,Chinese Silver Pomfret,Rupchanda,Pampus chinensis,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+black_pomfret,Black Pomfret,Kalo Rupchanda,Parastromateus niger,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+grey_mullet,Goldspot Mullet,Parshe,Planiliza parsia,Fish,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+bagda_chingri,Giant Tiger Prawn,Bagda Chingri,Penaeus monodon,Crustacean,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+banana_prawn,Banana Prawn,,Fenneropenaeus merguiensis,Crustacean,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+harina_chingri,Speckled Shrimp,Harina Chingri,Metapenaeus ensis,Crustacean,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+orange_mud_crab,Orange Mud Crab,,Scylla olivacea,Crustacean,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+pacific_oyster,Pacific Oyster,,Magallana gigas,Mollusk,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+asiatic_hard_clam,Asiatic Hard Clam,,Meretrix meretrix,Mollusk,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+cuttlefish,Needle Cuttlefish,,Sepia aculeata,Mollusk,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.
+finless_porpoise,Finless Porpoise,,Neophocaena phocaenoides,Aquatic mammal,Added in v1.1 expansion — common Bangladesh species. No model class yet - catalogue data only until the classifier is retrained.

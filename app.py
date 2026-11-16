@@ -1,4 +1,4 @@
-"""Bangladesh Fish Species Identification AI - Streamlit web app.
+"""AquaPorichoy - Streamlit web app.
 Run locally:  streamlit run app.py
 Needs: models/fish_model.keras, models/class_names.json, and a species table
 (data/species_master.csv if built, else species_info.csv).
@@ -35,15 +35,27 @@ IMG_SIZE = 224
 UNKNOWN_CLASS = "unknown_other"      # optional "not one of my species" class
 HIGH_CONF, LOW_CONF, MIN_MARGIN = 0.80, 0.50, 0.15
 
-st.set_page_config(page_title="Bangladesh Fish Species Identification AI", page_icon="🐟", layout="wide")
+st.set_page_config(page_title="AquaPorichoy — Aquatic Species Identifier", page_icon="🌊", layout="wide")
 
 st.markdown("""
 <style>
-.hero {background: linear-gradient(120deg,#0e7490,#06b6d4 60%,#67e8f9); color: white;
-       padding: 1.6rem 1.8rem; border-radius: 16px; margin-bottom: 1.2rem;}
-.hero h1 {color: white; margin: 0; font-size: clamp(1.4rem, 4vw, 2.2rem);}
+/* ---- animated flowing river-gradient hero banner ---- */
+.hero {background: linear-gradient(120deg,#083344,#0e7490,#0284c7,#059669,#06b6d4);
+       background-size: 300% 300%;
+       animation: heroFlow 12s ease infinite;
+       color: white; padding: 1.6rem 1.8rem; border-radius: 16px; margin-bottom: 1.2rem;
+       box-shadow: 0 8px 24px rgba(8,145,178,.25);}
+@keyframes heroFlow {0% {background-position: 0% 50%;} 50% {background-position: 100% 50%;} 100% {background-position: 0% 50%;}}
+.hero h1 {color: white; margin: 0; font-size: clamp(1.4rem, 4vw, 2.2rem); font-weight: 800; text-shadow: 0 1px 3px rgba(0,0,0,.25);}
 .hero p {margin: .3rem 0 0 0; opacity: .95;}
-.card {background: white; color: #0c4a6e; border: 1px solid #bae6fd; border-radius: 14px; padding: 1rem 1.2rem; margin-bottom: .8rem;}
+/* ---- command bar: the bordered container gets the gradient treatment ---- */
+div[data-testid="stVerticalBlockBorderWrapper"] {background: linear-gradient(120deg, rgba(6,182,212,.10), rgba(2,132,199,.10), rgba(5,150,105,.10));
+       border: 1.5px solid rgba(8,145,178,.45) !important; border-radius: 18px;
+       box-shadow: 0 6px 20px rgba(8,145,178,.15);}
+/* ---- result / profile cards: soft shadow + fade-in-up entrance ---- */
+.card {background: white; color: #0c4a6e; border: 1px solid #bae6fd; border-radius: 14px; padding: 1rem 1.2rem; margin-bottom: .8rem;
+       box-shadow: 0 4px 18px rgba(8,145,178,.12); animation: fadeInUp .6s ease both;}
+@keyframes fadeInUp {from {opacity: 0; transform: translateY(10px);} to {opacity: 1; transform: translateY(0);}}
 .card p, .card div, .card span, .card b {color: #0c4a6e;}
 .card h4 {margin: 0 0 .4rem 0; color: #0e7490 !important;}
 .card .species {font-size: 1.6rem; font-weight: 700; color: #0c4a6e;}
@@ -52,6 +64,17 @@ st.markdown("""
 .ok {background:#cffafe; color:#155e75;} .mid {background:#fef3c7; color:#92400e;} .bad {background:#fee2e2; color:#991b1b;}
 .small {font-size: .82rem;}
 .card .small {color: #475569;}
+/* ---- primary Identify button: gradient + hover lift ---- */
+.stButton button[kind="primary"], div.stButton > button {background: linear-gradient(120deg,#0e7490,#0284c7,#059669);
+       border: none; color: white; font-weight: 700;
+       transition: transform .15s ease, box-shadow .15s ease;}
+.stButton button[kind="primary"]:hover, div.stButton > button:hover {transform: translateY(-2px);
+       box-shadow: 0 8px 18px rgba(2,132,199,.35); color: white;}
+.stButton button[kind="primary"]:active, div.stButton > button:active {transform: translateY(0);}
+/* ---- progress bar: gradient fill ---- */
+div.stProgress > div > div > div > div {background: linear-gradient(90deg,#06b6d4,#0284c7,#059669);}
+/* ---- accessibility: honour reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {* {animation: none !important; transition: none !important;}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -156,8 +179,8 @@ def render_species_profile(rec, info=None):
 
 
 # ------------------------------------------------------------------ header
-st.markdown("""<div class="hero"><h1>🐟 Bangladesh Fish Species Identification AI</h1>
-<p>Upload a photograph of a fish and the AI will suggest which species it is.</p></div>""",
+st.markdown("""<div class="hero"><h1>🌊 AquaPorichoy</h1>
+<p>Bangladesh's aquatic species identifier — snap a photo, know your species.</p></div>""",
             unsafe_allow_html=True)
 
 if not (MODEL_PATH.exists() and CLASSES_PATH.exists()
@@ -186,122 +209,107 @@ with st.sidebar:
     st.caption(f"Biological information comes from {info_source} and is marked with its "
                "verification status. Predictions are AI estimates, not expert identification.")
 
-left, right = st.columns([1, 1.2], gap="large")
-
-with left:
-    st.subheader("1. Upload a fish photo")
-    file = st.file_uploader("JPG, PNG or WEBP (max 10 MB)", type=["jpg", "jpeg", "png", "webp"])
-    image = None
+# ------------------------------------------------------- command bar
+# ONE chat-style command bar: attach a photo AND type an optional note in
+# the same bar, then submit once. Built from standard widgets only (no
+# st.chat_input) inside a bordered container, which the CSS above styles
+# as the gradient command bar. On narrow screens the columns stack.
+file = None
+image = None
+bad_file = False
+note = ""
+go = False
+with st.container(border=True):
+    bar_photo, bar_note, bar_go = st.columns([1.1, 2.3, 1])
+    with bar_photo:
+        st.markdown("**📷 Photo**")
+        file = st.file_uploader("Upload a photo of the species",
+                                type=["jpg", "jpeg", "png", "webp"],
+                                label_visibility="collapsed")
+        st.caption("JPG, PNG or WEBP · max 10 MB")
+    with bar_note:
+        st.markdown("**✍️ Note (optional)**")
+        note = st.text_input(
+            "Add a note with your photo",
+            placeholder="Add a note with your photo (optional) — e.g. where it was caught, size, local name…",
+            label_visibility="collapsed")
     if file is not None:
         try:
             image = Image.open(file)
             image.load()
-            st.image(image, caption="Your photo", use_container_width=True)
         except Exception:  # noqa: BLE001
-            st.error("This file could not be opened as an image. Please try another photo.")
+            bad_file = True
             image = None
-    go = st.button("🔍 Identify Fish", type="primary", use_container_width=True, disabled=image is None)
+    with bar_go:
+        st.markdown("**🔍 Identify**")
+        go = st.button("🔍 Identify", type="primary", use_container_width=True,
+                       disabled=image is None)
+st.caption("The AI identifies from the **photo** — your note is kept as context "
+           "and shown with the result; it does not change the prediction yet.")
+if bad_file:
+    st.error("This file could not be opened as an image. Please try another photo.")
 
-with right:
-    st.subheader("2. Result")
-    if not go:
-        st.info("Upload a clear photo of the whole fish (side view works best), then press **Identify Fish**.")
+# ------------------------------------------------------------------ result
+st.subheader("Result")
+if image is not None:
+    st.image(image, caption="Your photo", width=480)
+if not go:
+    st.info("Upload a clear photo of the whole animal (side view works best), then press **Identify**.")
+else:
+    if note.strip():
+        st.markdown(f"**📝 Your note:** {e(note.strip())}")
+    if min(image.size) < 100:
+        st.warning("The image is very small, so the result may be unreliable.")
+    with st.spinner("Analysing..."):
+        probs = model.predict(preprocess(image), verbose=0)[0]
+    order = np.argsort(probs)[::-1]
+    top, second = int(order[0]), int(order[1])
+    top_id, conf = class_names[top], float(probs[top])
+    margin = conf - float(probs[second])
+    is_unknown = top_id == UNKNOWN_CLASS or conf < LOW_CONF
+
+    if is_unknown:
+        # INTERIM GATE (Stage 1): no trained gate model exists yet, so a
+        # low-confidence / unknown_other result is treated as "fails the
+        # gate" and reported honestly as such -- see module docstring.
+        st.markdown('<div class="card"><span class="badge bad">Cannot identify reliably</span>'
+                    '<p class="species">Unknown / not reliable</p>'
+                    '<p>The AI is not confident this is an aquatic species it knows. '
+                    'The photo may show a human, another animal, a plant, or an object — '
+                    'or a fish/aquatic species outside its training data, or the photo may '
+                    'be unclear. It will not guess a species in that case. '
+                    'Try a sharper, whole-animal, side-view photo of an aquatic species.</p></div>',
+                    unsafe_allow_html=True)
     else:
-        if min(image.size) < 100:
-            st.warning("The image is very small, so the result may be unreliable.")
-        with st.spinner("Analysing..."):
-            probs = model.predict(preprocess(image), verbose=0)[0]
-        order = np.argsort(probs)[::-1]
-        top, second = int(order[0]), int(order[1])
-        top_id, conf = class_names[top], float(probs[top])
-        margin = conf - float(probs[second])
-        is_unknown = top_id == UNKNOWN_CLASS or conf < LOW_CONF
-
-        if is_unknown:
-            # INTERIM GATE (Stage 1): no trained gate model exists yet, so a
-            # low-confidence / unknown_other result is treated as "fails the
-            # gate" and reported honestly as such -- see module docstring.
-            st.markdown('<div class="card"><span class="badge bad">Cannot identify reliably</span>'
-                        '<p class="species">Unknown / not reliable</p>'
-                        '<p>The AI is not confident this is an aquatic species it knows. '
-                        'The photo may show a human, another animal, a plant, or an object — '
-                        'or a fish/aquatic species outside its training data, or the photo may '
-                        'be unclear. It will not guess a species in that case. '
-                        'Try a sharper, whole-animal, side-view photo of an aquatic species.</p></div>',
-                        unsafe_allow_html=True)
+        rec = rec_for(top_id, info)
+        if conf >= HIGH_CONF and margin >= MIN_MARGIN:
+            badge = '<span class="badge ok">High confidence</span>'
         else:
-            rec = rec_for(top_id, info)
-            if conf >= HIGH_CONF and margin >= MIN_MARGIN:
-                badge = '<span class="badge ok">High confidence</span>'
-            else:
-                badge = '<span class="badge mid">Moderate confidence - please double-check</span>'
-            st.markdown(f"""<div class="card">{badge}
+            badge = '<span class="badge mid">Moderate confidence - please double-check</span>'
+        st.markdown(f"""<div class="card">{badge}
 <div class="species">{e(name_of(top_id, info))}</div>
 <div class="sci">{e(rec.get('scientific_name', 'n/a'))}</div>
 <p class="small">Local name: {e(rec.get('local_name', 'n/a'))}</p></div>""", unsafe_allow_html=True)
-            if badge.count("mid"):
-                st.warning("Confidence is not high or the second guess is close. "
-                           "Compare with the similar species below.")
+        if badge.count("mid"):
+            st.warning("Confidence is not high or the second guess is close. "
+                       "Compare with the similar species below.")
 
-        st.write(f"**Prediction confidence:** {conf*100:.1f}%")
-        st.progress(min(max(conf, 0.0), 1.0))
+    st.write(f"**Prediction confidence:** {conf*100:.1f}%")
+    st.progress(min(max(conf, 0.0), 1.0))
 
-        st.markdown("**Top 3 predictions**")
-        top3 = pd.DataFrame({
-            "Species": [name_of(class_names[i], info) for i in order[:3]],
-            "Confidence (%)": [round(float(probs[i]) * 100, 1) for i in order[:3]],
-        })
-        st.dataframe(top3, hide_index=True, use_container_width=True)
+    st.markdown("**Top 3 predictions**")
+    top3 = pd.DataFrame({
+        "Species": [name_of(class_names[i], info) for i in order[:3]],
+        "Confidence (%)": [round(float(probs[i]) * 100, 1) for i in order[:3]],
+    })
+    st.dataframe(top3, hide_index=True, use_container_width=True)
 
-        if not is_unknown:
-            rec = rec_for(top_id, info)
-            if rec:
-                render_species_profile(rec, info)
-            else:
-                st.warning("No biological information is stored for this species yet.")
-
-st.divider()
-
-# ------------------------------------------------------- explore catalogue
-st.subheader("Explore species")
-st.caption("Browse the open-data catalogue — including species the current model "
-           "cannot predict yet. Profiles use the same data as the results above.")
-if info:
-    query = st.text_input("Search by common, local or scientific name", key="explore_search")
-    catalogue = sorted(info.items(), key=lambda kv: name_of(kv[0], info).lower())
-    groups = sorted({str(r.get("group", "")).strip() for _, r in catalogue
-                     if str(r.get("group", "")).strip()})
-    if len(groups) > 1:
-        group_choice = st.selectbox("Group", ["All groups"] + groups, key="explore_group")
-        if group_choice != "All groups":
-            catalogue = [(cid, r) for cid, r in catalogue
-                         if str(r.get("group", "")).strip() == group_choice]
-    if query:
-        q = query.lower()
-        catalogue = [(cid, r) for cid, r in catalogue
-                     if q in name_of(cid, info).lower()
-                     or q in str(r.get("local_name", "")).lower()
-                     or q in str(r.get("scientific_name", "")).lower()]
-    if catalogue:
-        labels = {f"{name_of(cid, info)} — {r.get('scientific_name', '')}": cid
-                  for cid, r in catalogue}
-        chosen_label = st.selectbox("Species", list(labels), key="explore_select")
-        chosen_id = labels[chosen_label]
-        chosen = info[chosen_id]
-        predictable = set(class_names) | {CLASS_ALIASES.get(c, c) for c in class_names}
-        group_line = (f'<p class="small">Group: {e(chosen["group"])}</p>'
-                      if str(chosen.get("group", "")).strip() else "")
-        st.markdown(f"""<div class="card"><div class="species">{e(name_of(chosen_id, info))}</div>
-<div class="sci">{e(chosen.get('scientific_name', 'n/a'))}</div>
-<p class="small">Local name: {e(chosen.get('local_name', 'n/a'))}</p>{group_line}</div>""", unsafe_allow_html=True)
-        if chosen_id not in predictable:
-            st.caption("Catalogue only for now — the current model cannot predict this species yet. "
-                       "It can be added by retraining with the open photos (see README).")
-        render_species_profile(chosen, info)
-    else:
-        st.info("No species matches that search.")
-else:
-    st.info("No species data loaded.")
+    if not is_unknown:
+        rec = rec_for(top_id, info)
+        if rec:
+            render_species_profile(rec, info)
+        else:
+            st.warning("No biological information is stored for this species yet.")
 
 st.divider()
 st.caption("AI predictions are estimates and not a substitute for expert taxonomic identification.")
