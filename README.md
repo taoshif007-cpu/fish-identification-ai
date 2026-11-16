@@ -89,10 +89,10 @@ to `species_info.csv`, so nothing breaks if the open data has not been built.
   non-fish aquatic species; linked the same way for dolphins, prawns, crabs
   and mollusks (`fishbase_url` stays blank for those species).
 
-The catalogue now holds **58 species** (v1.1 expansion): **40 fish,
-8 crustaceans, 7 mollusks and 3 aquatic mammals** — all found in Bangladesh.
-It is **not fish-only**: each row has a `group` (Fish, Aquatic mammal,
-Crustacean, Mollusk, ...). The seed list includes Bangladesh-relevant
+The catalogue now holds **92 species** (v1.2 expansion): **58 fish,
+13 crustaceans, 10 mollusks, 7 aquatic mammals and 4 aquatic reptiles** —
+all found in Bangladesh. It is **not fish-only**: each row has a `group`
+(Fish, Aquatic mammal, Crustacean, Mollusk, Aquatic reptile). The seed list includes Bangladesh-relevant
 non-fish species — Ganges River Dolphin, Irrawaddy Dolphin, Finless
 Porpoise, Giant River Prawn (Golda), Bagda Chingri, Indian White Prawn,
 Mud Crab, Orange Mud Crab, Three-spot Swimming Crab, Green Mussel, Blood
@@ -154,11 +154,37 @@ Identification is designed as two stages:
    `non_living`/unknown.
 2. **Species classifier** — only runs on photos that pass the gate.
 
-There is **no trained gate model yet**. Until one is trained, the app uses an
-interim gate: the species model's `unknown_other` class plus its confidence
-thresholds, and the "cannot identify" message now says explicitly that the
-photo may be a human, another animal, a plant, or an object. That is a
-fallback, not a real gate — do not claim otherwise.
+There is **no trained gate model yet**, but the app no longer relies on the
+species model's confidence alone (the species model has only fish classes,
+so by itself it forced *every* image — even a screenshot of text — into a
+fish). The gate now has three layers, all of which must pass before a
+species is shown (see `decide()` in `app.py`):
+
+1. **ImageNet filter** — a MobileNetV2 pretrained on ImageNet (Keras
+   downloads the ~14 MB weights at runtime; nothing is stored in this
+   repo). If the total probability it assigns to aquatic-animal ImageNet
+   classes is under 3% while it is ≥30% confident in a non-aquatic top
+   class, the image is rejected; under a stricter 2% aquatic probability
+   with a non-aquatic top class it is also rejected unless the species
+   model itself is ≥90% confident. If the model can't load, this layer is
+   skipped.
+2. **Screenshot/document detector** — plain numpy/PIL statistics: mostly
+   flat, near-white background + dark text-like marks in many thin
+   horizontal bands. Catches screenshots, documents and photos of text.
+3. **Species confidence** — the species model's `unknown_other` class (if
+   present) plus a raised minimum confidence of 0.60.
+
+The gate is tested against the non-aquatic categories users actually
+upload by mistake: **screenshots / documents / text, humans, land animals
+(dogs, birds), plants, vehicles, buildings and everyday objects** (chairs,
+tables). The future trained gate's negative dataset
+(`data/download_negatives.py`, plus COCO / Open Images for people and
+objects — see below) covers the same categories.
+
+Honest status: layers 1–2 are **heuristic filters, not a trained gate** —
+they were validated locally against real fish photos (must pass) and the
+categories above (must be rejected). A trained gate model on the dataset
+below remains the proper long-term solution and would replace layer 1.
 
 Building the gate dataset:
 ```
@@ -175,9 +201,9 @@ python3 data/download_negatives.py --per-class 20 --classes other_living,aquatic
   used. `dataset_gate/SOURCES.md` (written by the script) documents the
   alternatives — COCO (`person` + object categories) and Open Images
   (`Person` + object classes) — to download manually under their terms.
-- The gate, like the expanded species list, only starts identifying anything
-  after retraining (`train.py`, Colab). Until then it is scaffolding +
-  dataset structure, honestly labelled.
+- The dataset above is for the future *trained* gate. The heuristic gate
+  described above is live now; a trained gate (after retraining with
+  `train.py` / Colab) would replace its layer 1.
 
 ## Honest limitations
 Accuracy depends on your data. The model only knows its trained species. Biological info in

@@ -3,17 +3,27 @@ Run locally:  streamlit run app.py
 Needs: models/fish_model.keras, models/class_names.json, and a species table
 (data/species_master.csv if built, else species_info.csv).
 
-IDENTIFICATION IS TWO-STAGE (design):
+IDENTIFICATION IS TWO-STAGE:
   Stage 1 - GATE: is this photo an aquatic animal at all, or is it a human,
-    another (non-aquatic) living thing, or a non-living object / unclear?
+    another (non-aquatic) living thing, a non-living object, or not a photo
+    of an animal at all (screenshot / document / text)?
   Stage 2 - SPECIES CLASSIFIER: which catalogue species is it?
-There is NO trained gate model yet. Until one is trained (see README "Gate
-plan" and data/download_negatives.py), the interim gate is the species
-model's own confidence behaviour: the optional unknown_other class plus the
-HIGH_CONF / LOW_CONF / MIN_MARGIN thresholds below. Anything that fails the
-interim gate is reported as "not reliably an aquatic species in the
-catalogue" -- never forced into a species. Do not present the interim gate
-as a real gate model.
+The species model has ONLY fish classes (no unknown_other class), so on its
+own it would force every image -- including a screenshot of text -- into a
+fish species. The gate therefore has three layers, all of which must pass
+before a species is shown (see decide() below):
+  1. An ImageNet filter: a MobileNetV2 pretrained on ImageNet (weights are
+     downloaded by Keras at runtime, ~14 MB, never stored in this repo)
+     estimates how much probability mass sits on aquatic-animal classes.
+     This is a heuristic filter, NOT a trained gate model.
+  2. A screenshot/document detector (numpy/PIL statistics): flat, light
+     backgrounds with dark text-like marks in many thin horizontal bands.
+  3. The species model's own confidence: the optional unknown_other class
+     plus the HIGH_CONF / LOW_CONF / MIN_MARGIN thresholds below.
+Anything that fails the gate is reported as "not reliably an aquatic
+species in the catalogue" -- never forced into a species. A properly
+trained gate model (see README "Gate plan" and data/download_negatives.py)
+remains future work and would replace layer 1.
 """
 import html
 import json
@@ -33,7 +43,16 @@ MASTER_PATH = BASE / "data" / "species_master.csv"   # open-data table (preferre
 CLASS_ALIASES = {"catla": "katla"}
 IMG_SIZE = 224
 UNKNOWN_CLASS = "unknown_other"      # optional "not one of my species" class
-HIGH_CONF, LOW_CONF, MIN_MARGIN = 0.80, 0.50, 0.15
+HIGH_CONF, LOW_CONF, MIN_MARGIN = 0.80, 0.60, 0.15
+# Gate (layer 1) thresholds: reject when the ImageNet filter puts less than
+# GATE_AQUATIC_MIN total probability on aquatic classes AND is itself
+# confident (>= GATE_TOP1_MIN) that the top class is something non-aquatic.
+# Second, stricter tier: below GATE_AQUATIC_HARD_MIN aquatic probability
+# with a non-aquatic top class, reject unless the species model is at
+# least GATE_FISH_OVERRIDE confident (a very sure species match outweighs
+# a wishy-washy gate; tuned on real fish vs human/bird/plant photos).
+GATE_AQUATIC_MIN, GATE_TOP1_MIN = 0.03, 0.30
+GATE_AQUATIC_HARD_MIN, GATE_FISH_OVERRIDE = 0.02, 0.90
 
 st.set_page_config(page_title="AquaPorichoy — Aquatic Species Identifier", page_icon="🌊", layout="wide")
 
@@ -115,6 +134,37 @@ div[data-testid="stTextInput"] input:focus {box-shadow: 0 0 0 3px rgba(6,182,212
 div[data-testid="stAlert"], div[data-testid="stDataFrame"] {animation: fadeInUp .5s ease both;}
 .badge {animation: badgePop .45s ease both;}
 @keyframes badgePop {from {opacity: 0; transform: scale(.85);} to {opacity: 1; transform: scale(1);}}
+/* ---- mobile: phones are the PRIMARY device ---- */
+.stImage img {max-width: 100%; height: auto;}
+@media (max-width: 640px) {
+  .block-container {padding-left: .8rem; padding-right: .8rem; padding-top: 1rem;}
+  /* the soft water-gradient background, a touch more vivid on phones */
+  .stApp {background: linear-gradient(160deg,#ccfbf1,#e0f2fe,#d1fae5,#e0f2fe);
+         background-size: 300% 300%;}
+  /* every column row stacks full-width (command bar becomes one column) */
+  [data-testid="stHorizontalBlock"] {flex-wrap: wrap !important;}
+  [data-testid="column"] {flex: 1 1 100% !important; min-width: 100% !important;}
+  .hero {padding: 1.1rem 1rem; border-radius: 14px;}
+  .hero h1 {font-size: 1.4rem;}
+  .hero p {font-size: .95rem;}
+  .card {padding: .8rem .9rem; border-radius: 18px; line-height: 1.5;}
+  .card .species {font-size: 1.3rem;}
+  /* upload zone as the big hero action: tall, dashed, inviting tap target */
+  div[data-testid="stFileUploaderDropzone"] {min-height: 120px;
+         border: 2px dashed rgba(8,145,178,.55) !important; border-radius: 18px;
+         background: linear-gradient(120deg, rgba(6,182,212,.12), rgba(5,150,105,.12));}
+  div[data-testid="stFileUploaderDropzone"] button {min-height: 48px; font-size: 16px;}
+  /* Identify = the primary action: full-width, tall, gentle pulse glow */
+  .stButton button[kind="primary"], div.stButton > button {min-height: 52px; width: 100%;
+         font-size: 1.05rem; animation: pulseGlow 2.4s ease-in-out infinite;}
+  @keyframes pulseGlow {0%,100% {box-shadow: 0 6px 16px rgba(2,132,199,.30);}
+         50% {box-shadow: 0 6px 26px rgba(6,182,212,.55);}}
+  /* 16px input text prevents iOS auto-zoom on focus; 48px touch targets */
+  div[data-testid="stTextInput"] input {font-size: 16px; min-height: 48px;}
+  div[data-testid="stAlert"] {border-radius: 14px;}
+  .stImage img {border-radius: 14px;}
+  div[data-testid="stDataFrame"] {border-radius: 14px;}
+}
 /* ---- accessibility: honour reduced motion ---- */
 @media (prefers-reduced-motion: reduce) {* {animation: none !important; transition: none !important;}}
 </style>
@@ -143,6 +193,176 @@ def load_species_info(data_stamp: str):
     info = {row["class_id"]: row for row in df.to_dict("records")}
     return info, ("data/species_master.csv (open data: GBIF / iNaturalist / FishBase links)"
                   if path == MASTER_PATH else "species_info.csv")
+
+
+# ------------------------------------------------------------------ gate
+# Stage 1 (see module docstring) is implemented by the functions below.
+# They are pure (no Streamlit calls) except load_gate_model, so the whole
+# decision can be unit-tested headlessly. decide() is the single place the
+# three layers are combined.
+
+# ImageNet (1000-class) labels that are clearly aquatic animals. Only
+# labels that actually exist in the ImageNet class index are listed
+# (verified against keras' imagenet_class_index.json). Deliberately
+# excluded: semi-aquatic / ambiguous labels such as otter, beaver,
+# platypus, hippopotamus and African_crocodile.
+AQUATIC_IMAGENET_LABELS = frozenset({
+    # fish
+    "tench", "goldfish", "great_white_shark", "tiger_shark", "hammerhead",
+    "electric_ray", "stingray", "coho", "barracouta", "eel", "anemone_fish",
+    "sturgeon", "gar", "lionfish", "puffer", "rock_beauty",
+    # crustaceans
+    "Dungeness_crab", "rock_crab", "fiddler_crab", "king_crab",
+    "American_lobster", "spiny_lobster", "crayfish", "hermit_crab",
+    "isopod",
+    # mollusks
+    "conch", "snail", "sea_slug", "chiton", "chambered_nautilus",
+    # echinoderms + cnidarians / corals
+    "starfish", "sea_urchin", "sea_cucumber", "jellyfish", "sea_anemone",
+    "brain_coral",
+    # marine mammals (ImageNet has no humpback/blue-whale classes; the
+    # whale classes that exist are grey_whale and killer_whale)
+    "dugong", "sea_lion", "grey_whale", "killer_whale",
+})
+
+
+@st.cache_resource(show_spinner="Loading photo filter...")
+def load_gate_model():
+    """Layer 1 model: MobileNetV2 pretrained on ImageNet.
+
+    Keras downloads the ~14 MB weights at runtime (cached by Keras outside
+    this repo); nothing is stored in the repo. Returns
+    (model, aquatic_indices, labels), or None if the model or the class
+    index cannot be loaded -- the app then relies on gate layers 2+3 only.
+    """
+    try:
+        import json as _json
+
+        from tensorflow.keras.applications import MobileNetV2, imagenet_utils
+        from tensorflow.keras.utils import get_file
+
+        model = MobileNetV2(weights="imagenet", include_top=True)
+        class_index = getattr(imagenet_utils, "CLASS_INDEX", None)
+        if not class_index:
+            fpath = get_file(
+                "imagenet_class_index.json",
+                "https://storage.googleapis.com/download.tensorflow.org/"
+                "data/imagenet_class_index.json",
+                cache_subdir="models")
+            with open(fpath, encoding="utf-8") as f:
+                class_index = _json.load(f)
+        labels = [class_index[str(i)][1] for i in range(len(class_index))]
+        aquatic_idx = [i for i, lab in enumerate(labels)
+                       if lab in AQUATIC_IMAGENET_LABELS]
+        if not aquatic_idx:
+            return None
+        return model, aquatic_idx, labels
+    except Exception:  # noqa: BLE001 -- gate is best-effort; layers 2+3 remain
+        return None
+
+
+def gate_scores(img, gate=None):
+    """Layer 1 scores for a PIL image, or None if the gate is unavailable.
+
+    Returns dict(aquatic_prob, top1_label, top1_prob, top1_aquatic) where
+    aquatic_prob is the summed softmax probability over ALL aquatic
+    ImageNet classes (the full 1000-vector, not just the top-5).
+    """
+    if gate is None:
+        gate = load_gate_model()
+    if gate is None:
+        return None
+    from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+
+    model, aquatic_idx, labels = gate
+    x = ImageOps.exif_transpose(img).convert("RGB").resize((IMG_SIZE, IMG_SIZE))
+    arr = preprocess_input(np.asarray(x, dtype="float32"))
+    probs = model.predict(np.expand_dims(arr, axis=0), verbose=0)[0]
+    top1 = int(np.argmax(probs))
+    return {
+        "aquatic_prob": float(sum(float(probs[i]) for i in aquatic_idx)),
+        "top1_label": labels[top1],
+        "top1_prob": float(probs[top1]),
+        "top1_aquatic": labels[top1] in AQUATIC_IMAGENET_LABELS,
+    }
+
+
+# Layer 2 thresholds (tuned on rendered screenshots/documents/chat UIs vs
+# real fish and other photos: the text images score flat 0.84-0.96 while
+# every real photo tested stays <= 0.46, and no real photo fires all four
+# conditions at once).
+DOC_FLAT_MIN = 0.55    # >55% of pixels flat light (bright + low colour spread)
+DOC_DARK_MIN = 0.01    # dark "ink" pixels between 1% ...
+DOC_DARK_MAX = 0.45    # ... and 45% of the image
+DOC_EDGE_MIN = 0.015   # enough sharp edges for text strokes
+DOC_BAND_MIN = 0.20    # >20% of rows look like text lines
+
+
+def doc_like_features(img):
+    """Layer 2 statistics for a PIL image (numpy/PIL only)."""
+    x = ImageOps.exif_transpose(img).convert("RGB")
+    x.thumbnail((1024, 1024))
+    arr = np.asarray(x).astype("float32")
+    gray = arr.mean(axis=2)
+    spread = arr.max(axis=2) - arr.min(axis=2)
+    # "flat light" = bright AND near-grey/uniform colour: white paper, app
+    # backgrounds and chat wallpapers all qualify; water/sky in real photos
+    # is bright but colour-spread, so it mostly does not.
+    flat_fraction = float(((arr.min(axis=2) > 215) & (spread < 30)).mean())
+    dark = gray < 150
+    dark_fraction = float(dark.mean())
+    gx = np.abs(np.diff(gray, axis=1)) > 40
+    gy = np.abs(np.diff(gray, axis=0)) > 40
+    edge_density = float((gx.mean() + gy.mean()) / 2)
+    row_dark = dark.mean(axis=1)
+    text_band_fraction = float(((row_dark > 0.005) & (row_dark < 0.60)).mean())
+    return {"flat_fraction": flat_fraction, "dark_fraction": dark_fraction,
+            "edge_density": edge_density, "text_band_fraction": text_band_fraction}
+
+
+def is_doc_like(img):
+    """True if the image looks like a screenshot / document / page of text
+    rather than a photograph. Conservative by design: ALL signals must fire."""
+    f = doc_like_features(img)
+    return (f["flat_fraction"] > DOC_FLAT_MIN
+            and DOC_DARK_MIN <= f["dark_fraction"] <= DOC_DARK_MAX
+            and f["edge_density"] > DOC_EDGE_MIN
+            and f["text_band_fraction"] > DOC_BAND_MIN)
+
+
+def decide(fish_top_id, fish_conf, doc_like, gate):
+    """Combine the three gate layers. Returns (accepted, reason).
+
+    Reject if ANY layer fails:
+      * layer 2: the image looks like a screenshot/document/text;
+      * layer 1: the ImageNet filter is available and either (a) puts
+        < GATE_AQUATIC_MIN total probability on aquatic classes while being
+        itself confident (>= GATE_TOP1_MIN) about a non-aquatic top-1
+        class, or (b) puts < GATE_AQUATIC_HARD_MIN on aquatic classes with
+        a non-aquatic top-1 class and the species model is below
+        GATE_FISH_OVERRIDE;
+      * layer 3: the species model predicts unknown_other or is below
+        LOW_CONF.
+    """
+    if doc_like:
+        return False, "screenshot/document-like image"
+    if (gate is not None
+            and gate["aquatic_prob"] < GATE_AQUATIC_MIN
+            and not gate["top1_aquatic"]
+            and gate["top1_prob"] >= GATE_TOP1_MIN):
+        return False, (f"ImageNet gate: top class '{gate['top1_label']}' "
+                       f"({gate['top1_prob']:.0%}), aquatic probability "
+                       f"{gate['aquatic_prob']:.1%}")
+    if (gate is not None
+            and gate["aquatic_prob"] < GATE_AQUATIC_HARD_MIN
+            and not gate["top1_aquatic"]
+            and fish_conf < GATE_FISH_OVERRIDE):
+        return False, (f"ImageNet gate (strict): aquatic probability "
+                       f"{gate['aquatic_prob']:.1%}, top class "
+                       f"'{gate['top1_label']}'")
+    if fish_top_id == UNKNOWN_CLASS or fish_conf < LOW_CONF:
+        return False, "species model not confident enough"
+    return True, ""
 
 
 def rec_for(cid, info):
@@ -248,7 +468,45 @@ except Exception as err:  # noqa: BLE001
     st.stop()
 
 known = [name_of(c, info) for c in class_names if c != UNKNOWN_CLASS]
+
+# Optional dark theme ("water at night"), injected only when the sidebar
+# toggle is on; with the toggle off the page markup is exactly the light
+# theme. It restyles AquaPorichoy's own background/cards/bar -- Streamlit's
+# widget chrome still follows the viewer's Streamlit theme. The global
+# prefers-reduced-motion rule above uses !important, so it keeps winning
+# over the animated dark background too.
+DARK_CSS = """
+<style>
+.stApp {background: linear-gradient(160deg,#020617,#082f3a,#052e2b,#082f3a);
+       background-size: 300% 300%; animation: heroFlow 24s ease infinite;}
+.stApp p, .stApp label, .stMarkdown {color: #e0f2f1;}
+.card {background: rgba(8,47,73,.92); border-color: #155e75; color: #e6f4f1;
+       box-shadow: 0 4px 18px rgba(0,0,0,.45);}
+.card p, .card div, .card span, .card b {color: #e6f4f1;}
+.card h4 {color: #7dd3fc !important;}
+.card .species {color: #f0fdfa;}
+.card .sci {color: #67e8f9;}
+.card .small {color: #94a3b8;}
+.ok {background:#134e4a; color:#99f6e4;} .mid {background:#713f12; color:#fde68a;}
+.bad {background:#7f1d1d; color:#fecaca;}
+div[data-testid="stVerticalBlockBorderWrapper"] {
+       background: linear-gradient(120deg, rgba(6,182,212,.16), rgba(2,132,199,.16), rgba(5,150,105,.16));
+       border-color: rgba(103,232,249,.4) !important;}
+section[data-testid="stSidebar"] {background: linear-gradient(180deg,#082f3a,#020617);}
+section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] span {color: #e0f2f1;}
+div[data-testid="stTextInput"] input {background: #0f2f42; color: #f0fdfa;}
+div[data-testid="stFileUploaderDropzone"] {background: rgba(8,47,73,.6); color: #e0f2f1;}
+div[data-testid="stAlert"] {background: rgba(8,47,73,.85); color: #e0f2f1;}
+</style>
+"""
+
 with st.sidebar:
+    st.caption("Appearance")
+    dark_mode = st.toggle("🌙 Dark mode", key="dark_mode", value=False)
+    st.caption("Dark mode restyles AquaPorichoy's cards and background.")
+    if dark_mode:
+        st.markdown(DARK_CSS, unsafe_allow_html=True)
     st.header("🌊 About AquaPorichoy")
     st.write("**AquaPorichoy** — *“aquatic identity”* — identifies aquatic species "
              "found in Bangladesh from a photo, and shows the species name with its "
@@ -257,7 +515,7 @@ with st.sidebar:
              "note if you like, and press **🔍 Identify**.")
     st.write(f"Species profiles are powered by open data (GBIF, iNaturalist, "
              f"FishBase / SeaLifeBase) covering **{len(info)} species** — fish, "
-             "aquatic mammals, crustaceans and mollusks.")
+             "aquatic mammals, crustaceans, mollusks and aquatic reptiles.")
     st.write(f"Photo identification currently recognises **{len(known)} species**:")
     for n in known:
         st.write(f"• {n}")
@@ -321,20 +579,28 @@ else:
         st.warning("The image is very small, so the result may be unreliable.")
     with st.spinner("Analysing..."):
         probs = model.predict(preprocess(image), verbose=0)[0]
+        # Gate layers 1+2 (layer 3 is the species confidence itself). The
+        # ImageNet gate is best-effort: if it cannot load, gate stays None
+        # and layers 2+3 still apply -- see decide().
+        doc_like = is_doc_like(image)
+        gate = None
+        try:
+            gate = gate_scores(image)
+        except Exception:  # noqa: BLE001
+            gate = None
     order = np.argsort(probs)[::-1]
     top, second = int(order[0]), int(order[1])
     top_id, conf = class_names[top], float(probs[top])
     margin = conf - float(probs[second])
-    is_unknown = top_id == UNKNOWN_CLASS or conf < LOW_CONF
+    accepted, _gate_reason = decide(top_id, conf, doc_like, gate)
+    is_unknown = not accepted
 
     if is_unknown:
-        # INTERIM GATE (Stage 1): no trained gate model exists yet, so a
-        # low-confidence / unknown_other result is treated as "fails the
-        # gate" and reported honestly as such -- see module docstring.
         st.markdown('<div class="card"><span class="badge bad">Cannot identify reliably</span>'
                     '<p class="species">Unknown / not reliable</p>'
                     '<p>The AI is not confident this is an aquatic species it knows. '
-                    'The photo may show a human, another animal, a plant, or an object — '
+                    'The image may be a screenshot, a document or photo of text, a human, '
+                    'another animal, a plant, or an object — '
                     'or a fish/aquatic species outside its training data, or the photo may '
                     'be unclear. It will not guess a species in that case. '
                     'Try a sharper, whole-animal, side-view photo of an aquatic species.</p></div>',
