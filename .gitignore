@@ -1,0 +1,6 @@
+
+# Open-data build artefacts (training photos + API cache, not code)
+dataset_open/
+data/cache/
+dataset_gate/
+__pycache__/

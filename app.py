@@ -1,6 +1,19 @@
 """Bangladesh Fish Species Identification AI - Streamlit web app.
 Run locally:  streamlit run app.py
-Needs: models/fish_model.keras, models/class_names.json, species_info.csv
+Needs: models/fish_model.keras, models/class_names.json, and a species table
+(data/species_master.csv if built, else species_info.csv).
+
+IDENTIFICATION IS TWO-STAGE (design):
+  Stage 1 - GATE: is this photo an aquatic animal at all, or is it a human,
+    another (non-aquatic) living thing, or a non-living object / unclear?
+  Stage 2 - SPECIES CLASSIFIER: which catalogue species is it?
+There is NO trained gate model yet. Until one is trained (see README "Gate
+plan" and data/download_negatives.py), the interim gate is the species
+model's own confidence behaviour: the optional unknown_other class plus the
+HIGH_CONF / LOW_CONF / MIN_MARGIN thresholds below. Anything that fails the
+interim gate is reported as "not reliably an aquatic species in the
+catalogue" -- never forced into a species. Do not present the interim gate
+as a real gate model.
 """
 import html
 import json
@@ -15,6 +28,9 @@ BASE = Path(__file__).parent
 MODEL_PATH = BASE / "models" / "fish_model.keras"
 CLASSES_PATH = BASE / "models" / "class_names.json"
 INFO_PATH = BASE / "species_info.csv"
+MASTER_PATH = BASE / "data" / "species_master.csv"   # open-data table (preferred when present)
+# The trained model spells this class "catla"; the data tables use "katla".
+CLASS_ALIASES = {"catla": "katla"}
 IMG_SIZE = 224
 UNKNOWN_CLASS = "unknown_other"      # optional "not one of my species" class
 HIGH_CONF, LOW_CONF, MIN_MARGIN = 0.80, 0.50, 0.15
@@ -51,8 +67,17 @@ def load_model():
 
 @st.cache_data
 def load_species_info():
-    df = pd.read_csv(INFO_PATH, encoding="utf-8-sig").fillna("")
-    return {row["class_id"]: row for row in df.to_dict("records")}
+    """Prefer the open-data master table; fall back to the legacy CSV."""
+    path = MASTER_PATH if MASTER_PATH.exists() else INFO_PATH
+    df = pd.read_csv(path, encoding="utf-8-sig").fillna("")
+    info = {row["class_id"]: row for row in df.to_dict("records")}
+    return info, ("data/species_master.csv (open data: GBIF / iNaturalist / FishBase links)"
+                  if path == MASTER_PATH else "species_info.csv")
+
+
+def rec_for(cid, info):
+    """Species record for a class id, honouring CLASS_ALIASES; {} if none."""
+    return info.get(cid) or info.get(CLASS_ALIASES.get(cid, ""), {}) or {}
 
 
 def preprocess(img):
@@ -67,7 +92,67 @@ def e(text):
 
 
 def name_of(cid, info):
-    return info.get(cid, {}).get("common_name") or cid.replace("_", " ").title()
+    return rec_for(cid, info).get("common_name") or cid.replace("_", " ").title()
+
+
+def _present(rec, field):
+    return bool(str(rec.get(field, "")).strip())
+
+
+def render_species_profile(rec, info=None):
+    """Full species profile from a master/legacy record. Every field is
+    optional: partial rows render only what they have, never crash."""
+    if not rec:
+        return
+    # --- classification (full hierarchy when the master table provides it)
+    ranks = [("Kingdom", "kingdom"), ("Phylum", "phylum"), ("Class", "class"),
+             ("Order", "order"), ("Family", "family"), ("Genus", "genus")]
+    shown = [(label, rec[field]) for label, field in ranks if _present(rec, field)]
+    if shown:
+        body = " &nbsp;|&nbsp; ".join(f"{label}: <b>{e(val)}</b>" for label, val in shown)
+        st.markdown(f'<div class="card"><h4>Scientific classification</h4>{body}</div>',
+                    unsafe_allow_html=True)
+    if _present(rec, "identification_characteristics"):
+        st.markdown(f'<div class="card"><h4>Key identification characteristics</h4>'
+                    f'{e(rec["identification_characteristics"])}</div>', unsafe_allow_html=True)
+    if _present(rec, "habitat") or _present(rec, "distribution"):
+        body = ""
+        if _present(rec, "habitat"):
+            body += f'<h4>Habitat</h4>{e(rec["habitat"])}'
+        if _present(rec, "distribution"):
+            body += f'<h4 style="margin-top:.7rem">Distribution</h4>{e(rec["distribution"])}'
+        st.markdown(f'<div class="card">{body}</div>', unsafe_allow_html=True)
+    # --- biodiversity: GBIF occurrence counts
+    if _present(rec, "bd_occurrences") or _present(rec, "world_occurrences"):
+        bits = []
+        if _present(rec, "bd_occurrences"):
+            bits.append(f"<b>{e(rec['bd_occurrences'])}</b> recorded in Bangladesh")
+        if _present(rec, "world_occurrences"):
+            bits.append(f"<b>{e(rec['world_occurrences'])}</b> worldwide")
+        if _present(rec, "gbif_photo_records"):
+            bits.append(f"<b>{e(rec['gbif_photo_records'])}</b> worldwide with photos")
+        st.markdown(f'<div class="card"><h4>Biodiversity (GBIF occurrence records)</h4>'
+                    f'{" &nbsp;|&nbsp; ".join(bits)}</div>', unsafe_allow_html=True)
+    if _present(rec, "sample_photo_url"):
+        st.image(str(rec["sample_photo_url"]), caption="Sample photo (open data)", use_container_width=True)
+    sims = [s.strip() for s in str(rec.get("similar_species", "")).split(";") if s.strip()]
+    if sims:
+        display = [name_of(s, info) if info else s.replace("_", " ").title() for s in sims]
+        st.markdown("**Visually similar species:** " + ", ".join(display))
+    links = []
+    if _present(rec, "fishbase_url"):
+        links.append(f'[FishBase]({rec["fishbase_url"]})')
+    if _present(rec, "sealifebase_url"):
+        links.append(f'[SeaLifeBase]({rec["sealifebase_url"]})')
+    if _present(rec, "gbif_species_key"):
+        links.append(f'[GBIF](https://www.gbif.org/species/{rec["gbif_species_key"]})')
+    if _present(rec, "inaturalist_taxon_id"):
+        links.append(f'[iNaturalist](https://www.inaturalist.org/taxa/{rec["inaturalist_taxon_id"]})')
+    if links:
+        st.markdown("**Sources:** " + " · ".join(links))
+    if _present(rec, "info_status"):
+        st.markdown(f'<p class="small">Information status: {e(rec["info_status"])}</p>',
+                    unsafe_allow_html=True)
 
 
 # ------------------------------------------------------------------ header
@@ -75,7 +160,8 @@ st.markdown("""<div class="hero"><h1>🐟 Bangladesh Fish Species Identification
 <p>Upload a photograph of a fish and the AI will suggest which species it is.</p></div>""",
             unsafe_allow_html=True)
 
-if not (MODEL_PATH.exists() and CLASSES_PATH.exists() and INFO_PATH.exists()):
+if not (MODEL_PATH.exists() and CLASSES_PATH.exists()
+        and (MASTER_PATH.exists() or INFO_PATH.exists())):
     st.error("Model files not found. Train the model in Google Colab, then place "
              "`fish_model.keras` and `class_names.json` inside the `models/` folder "
              "(see README.md, Step 3).")
@@ -83,7 +169,7 @@ if not (MODEL_PATH.exists() and CLASSES_PATH.exists() and INFO_PATH.exists()):
 
 try:
     model, class_names = load_model()
-    info = load_species_info()
+    info, info_source = load_species_info()
 except Exception as err:  # noqa: BLE001
     st.error(f"Could not load the model. Check that the TensorFlow version in requirements.txt "
              f"matches the one used for training.\n\nDetails: {err}")
@@ -97,7 +183,7 @@ with st.sidebar:
         st.write(f"• {n}")
     st.caption("It cannot identify any other species. If your fish is not in this list, "
                "the result will be wrong even if the app sounds confident.")
-    st.caption("Biological information comes from species_info.csv and is marked with its "
+    st.caption(f"Biological information comes from {info_source} and is marked with its "
                "verification status. Predictions are AI estimates, not expert identification.")
 
 left, right = st.columns([1, 1.2], gap="large")
@@ -132,13 +218,19 @@ with right:
         is_unknown = top_id == UNKNOWN_CLASS or conf < LOW_CONF
 
         if is_unknown:
+            # INTERIM GATE (Stage 1): no trained gate model exists yet, so a
+            # low-confidence / unknown_other result is treated as "fails the
+            # gate" and reported honestly as such -- see module docstring.
             st.markdown('<div class="card"><span class="badge bad">Cannot identify reliably</span>'
                         '<p class="species">Unknown / not reliable</p>'
-                        '<p>The AI is not confident. This may be a species outside its training data, '
-                        'or the photo may be unclear. Try a sharper, whole-fish, side-view photo.</p></div>',
+                        '<p>The AI is not confident this is an aquatic species it knows. '
+                        'The photo may show a human, another animal, a plant, or an object — '
+                        'or a fish/aquatic species outside its training data, or the photo may '
+                        'be unclear. It will not guess a species in that case. '
+                        'Try a sharper, whole-animal, side-view photo of an aquatic species.</p></div>',
                         unsafe_allow_html=True)
         else:
-            rec = info.get(top_id, {})
+            rec = rec_for(top_id, info)
             if conf >= HIGH_CONF and margin >= MIN_MARGIN:
                 badge = '<span class="badge ok">High confidence</span>'
             else:
@@ -162,20 +254,54 @@ with right:
         st.dataframe(top3, hide_index=True, use_container_width=True)
 
         if not is_unknown:
-            rec = info.get(top_id)
+            rec = rec_for(top_id, info)
             if rec:
-                st.markdown(f"""<div class="card"><h4>Scientific classification</h4>
-Family: <b>{e(rec['family'])}</b> &nbsp;|&nbsp; Order: <b>{e(rec['order'])}</b></div>
-<div class="card"><h4>Key identification characteristics</h4>{e(rec['identification_characteristics'])}</div>
-<div class="card"><h4>Habitat</h4>{e(rec['habitat'])}<h4 style="margin-top:.7rem">Distribution</h4>{e(rec['distribution'])}</div>""",
-                            unsafe_allow_html=True)
-                sims = [s for s in str(rec.get("similar_species", "")).split(";") if s.strip()]
-                if sims:
-                    st.markdown("**Visually similar species:** " + ", ".join(name_of(s.strip(), info) for s in sims))
-                st.markdown(f'<p class="small">Information status: {e(rec.get("info_status", "unknown"))}</p>',
-                            unsafe_allow_html=True)
+                render_species_profile(rec, info)
             else:
-                st.warning("No biological information is stored for this species in species_info.csv.")
+                st.warning("No biological information is stored for this species yet.")
+
+st.divider()
+
+# ------------------------------------------------------- explore catalogue
+st.subheader("Explore species")
+st.caption("Browse the open-data catalogue — including species the current model "
+           "cannot predict yet. Profiles use the same data as the results above.")
+if info:
+    query = st.text_input("Search by common, local or scientific name", key="explore_search")
+    catalogue = sorted(info.items(), key=lambda kv: name_of(kv[0], info).lower())
+    groups = sorted({str(r.get("group", "")).strip() for _, r in catalogue
+                     if str(r.get("group", "")).strip()})
+    if len(groups) > 1:
+        group_choice = st.selectbox("Group", ["All groups"] + groups, key="explore_group")
+        if group_choice != "All groups":
+            catalogue = [(cid, r) for cid, r in catalogue
+                         if str(r.get("group", "")).strip() == group_choice]
+    if query:
+        q = query.lower()
+        catalogue = [(cid, r) for cid, r in catalogue
+                     if q in name_of(cid, info).lower()
+                     or q in str(r.get("local_name", "")).lower()
+                     or q in str(r.get("scientific_name", "")).lower()]
+    if catalogue:
+        labels = {f"{name_of(cid, info)} — {r.get('scientific_name', '')}": cid
+                  for cid, r in catalogue}
+        chosen_label = st.selectbox("Species", list(labels), key="explore_select")
+        chosen_id = labels[chosen_label]
+        chosen = info[chosen_id]
+        predictable = set(class_names) | {CLASS_ALIASES.get(c, c) for c in class_names}
+        group_line = (f'<p class="small">Group: {e(chosen["group"])}</p>'
+                      if str(chosen.get("group", "")).strip() else "")
+        st.markdown(f"""<div class="card"><div class="species">{e(name_of(chosen_id, info))}</div>
+<div class="sci">{e(chosen.get('scientific_name', 'n/a'))}</div>
+<p class="small">Local name: {e(chosen.get('local_name', 'n/a'))}</p>{group_line}</div>""", unsafe_allow_html=True)
+        if chosen_id not in predictable:
+            st.caption("Catalogue only for now — the current model cannot predict this species yet. "
+                       "It can be added by retraining with the open photos (see README).")
+        render_species_profile(chosen, info)
+    else:
+        st.info("No species matches that search.")
+else:
+    st.info("No species data loaded.")
 
 st.divider()
 st.caption("AI predictions are estimates and not a substitute for expert taxonomic identification.")

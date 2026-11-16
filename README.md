@@ -65,6 +65,107 @@ on (b)-(d) mean you need an `unknown_other` class and more varied images.
 1. Add `dataset_raw/<new_class_id>/` with images. 2. Add a row to `species_info.csv` with the same `class_id`.
 3. Re-run Colab Cells 3-6. 4. Replace the two files in `models/` on GitHub; the app redeploys.
 
+## Open data version
+
+The app now prefers an open-data species table over the hand-written CSV.
+If `data/species_master.csv` exists it is used; otherwise the app falls back
+to `species_info.csv`, so nothing breaks if the open data has not been built.
+
+**Sources**
+- [GBIF](https://www.gbif.org) — species matching / taxonomy (kingdom → genus),
+  occurrence counts for Bangladesh and worldwide, and occurrences with photos.
+  Species pages look like `https://www.gbif.org/species/<key>`.
+- [iNaturalist](https://www.inaturalist.org) — taxon class (from taxon
+  ancestors), sample photos, and research-grade observation photos.
+- [FishBase](https://www.fishbase.se) — linked per fish species as
+  `https://www.fishbase.se/summary/<Genus-species>.html` for deeper reading
+  (linked, not scraped). Cite FishBase when you use its data.
+- [SeaLifeBase](https://www.sealifebase.se) — the FishBase sister database for
+  non-fish aquatic species; linked the same way for dolphins, prawns, crabs
+  and mollusks (`fishbase_url` stays blank for those species).
+
+The catalogue is **not fish-only**: each row has a `group` (Fish, Aquatic
+mammal, Crustacean, Mollusk, ...). The seed list includes Bangladesh-relevant
+non-fish species — Ganges River Dolphin, Irrawaddy Dolphin, Giant River Prawn
+(Golda), Indian White Prawn, Mud Crab, Three-spot Swimming Crab, Green
+Mussel, Blood Clam (Teppa), Apple Snail and Indian Ocean Squid — enriched
+through exactly the same GBIF/iNaturalist pipeline. In the app, **Explore
+species** can be filtered by group.
+
+**Build / refresh the data**
+```
+python3 data/build_species_data.py
+```
+Reads `data/seed_species.csv` (the species list), fetches GBIF + iNaturalist
+data with a file cache in `data/cache/`, merges the existing `species_info.csv`
+habitat / distribution / identification text as manual overrides, and writes
+`data/species_master.csv` with the full classification, habitat, distribution,
+Bangladesh + world occurrence counts (biodiversity), photo-record counts, a
+sample photo, and source links per species. Two model classes
+(`freshwater_shark`, `long_whiskered_catfish`) have only *tentative*
+scientific-name mappings (Wallago attu / Sperata aor) — they are flagged
+NEEDS VERIFICATION in the output; check them against the training photos
+before publishing.
+
+**Download training photos (openly licensed only)**
+```
+python3 data/download_photos.py --per-species 100
+python3 data/download_photos.py --per-species 20 --species rohu,hilsa
+```
+Downloads research-grade iNaturalist photos and GBIF image occurrences into
+`dataset_open/<class_id>/` (git-ignored). Photos with no licence or an
+"all rights reserved" licence are skipped; `dataset_open/photo_metadata.csv`
+records the licence, photographer/observer and source page for every photo,
+so attribution travels with the dataset. Note that many photos are CC BY-NC —
+fine for a non-commercial / educational project, but check before any
+commercial use.
+
+**What the app shows now**
+The result profile includes the full classification (kingdom → genus),
+habitat, distribution, GBIF biodiversity counts and source links when the
+master table is present, and a new **Explore species** section lets anyone
+browse/search the whole catalogue — so Hilsa and Common Carp have full
+profiles even though the current model cannot predict them yet.
+
+**Honest limitation:** the catalogue can cover many species long before the
+classifier can. Expanding *identification* beyond the current 8 model classes
+requires retraining: download photos with the script above, put them in the
+dataset folders, and follow the existing `train.py` / Colab flow (Steps 2–3),
+then replace `models/fish_model.keras` and `models/class_names.json`.
+Catalogue/data coverage ≠ classifier coverage.
+
+### Gate plan (aquatic vs human / other living / non-living)
+
+Identification is designed as two stages:
+1. **Gate** — aquatic animal vs `human` vs `other_living` vs
+   `non_living`/unknown.
+2. **Species classifier** — only runs on photos that pass the gate.
+
+There is **no trained gate model yet**. Until one is trained, the app uses an
+interim gate: the species model's `unknown_other` class plus its confidence
+thresholds, and the "cannot identify" message now says explicitly that the
+photo may be a human, another animal, a plant, or an object. That is a
+fallback, not a real gate — do not claim otherwise.
+
+Building the gate dataset:
+```
+python3 data/download_negatives.py            # target: 200+ per gate class
+python3 data/download_negatives.py --per-class 20 --classes other_living,aquatic
+```
+- Target **200+ images per gate class** (`aquatic`, `human`, `other_living`,
+  `non_living`), mirroring this repo's existing `unknown_other` guidance.
+- `other_living` (birds, insects, plants, fungi) and `aquatic` (seed species)
+  are downloaded from iNaturalist research-grade, licence-required photos,
+  with attribution in `dataset_gate/photo_metadata.csv`.
+- `human` and `non_living` are **not** downloaded by the script: there is no
+  clean, licence-safe API source for them, and face datasets must never be
+  used. `dataset_gate/SOURCES.md` (written by the script) documents the
+  alternatives — COCO (`person` + object categories) and Open Images
+  (`Person` + object classes) — to download manually under their terms.
+- The gate, like the expanded species list, only starts identifying anything
+  after retraining (`train.py`, Colab). Until then it is scaffolding +
+  dataset structure, honestly labelled.
+
 ## Honest limitations
 Accuracy depends on your data. The model only knows its trained species. Biological info in
 `species_info.csv` is a draft; verify with FishBase and Bangladesh fisheries references first.
