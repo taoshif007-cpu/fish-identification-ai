@@ -1,8 +1,13 @@
-# Bangladesh Fish Species Identification AI
+# AquaPorichoy
 
-Upload a fish photo -> the app suggests the species (common + scientific name, family, order,
-habitat, distribution, identification characters, confidence, similar species) and warns when it
-cannot identify the fish reliably.
+**Bangladesh's aquatic species identifier — snap a photo, know your species.**
+("AquaPorichoy" = "aquatic identity"; it covers fish plus the other aquatic
+species of Bangladesh — dolphins, crustaceans and mollusks too.)
+*(formerly Bangladesh Fish Species Identification AI)*
+
+Upload a photo of a fish or other aquatic species -> the app suggests the species (common +
+scientific name, family, order, habitat, distribution, identification characters, confidence,
+similar species) and warns when it cannot identify the animal reliably.
 
 Starter species (8): rohu, katla, mrigal, grass_carp, silver_carp, common_carp, nile_tilapia, hilsa.
 
@@ -84,13 +89,15 @@ to `species_info.csv`, so nothing breaks if the open data has not been built.
   non-fish aquatic species; linked the same way for dolphins, prawns, crabs
   and mollusks (`fishbase_url` stays blank for those species).
 
-The catalogue is **not fish-only**: each row has a `group` (Fish, Aquatic
-mammal, Crustacean, Mollusk, ...). The seed list includes Bangladesh-relevant
-non-fish species — Ganges River Dolphin, Irrawaddy Dolphin, Giant River Prawn
-(Golda), Indian White Prawn, Mud Crab, Three-spot Swimming Crab, Green
-Mussel, Blood Clam (Teppa), Apple Snail and Indian Ocean Squid — enriched
-through exactly the same GBIF/iNaturalist pipeline. In the app, **Explore
-species** can be filtered by group.
+The catalogue now holds **58 species** (v1.1 expansion): **40 fish,
+8 crustaceans, 7 mollusks and 3 aquatic mammals** — all found in Bangladesh.
+It is **not fish-only**: each row has a `group` (Fish, Aquatic mammal,
+Crustacean, Mollusk, ...). The seed list includes Bangladesh-relevant
+non-fish species — Ganges River Dolphin, Irrawaddy Dolphin, Finless
+Porpoise, Giant River Prawn (Golda), Bagda Chingri, Indian White Prawn,
+Mud Crab, Orange Mud Crab, Three-spot Swimming Crab, Green Mussel, Blood
+Clam (Teppa), Apple Snail and Indian Ocean Squid — enriched through exactly
+the same GBIF/iNaturalist pipeline.
 
 **Build / refresh the data**
 ```
@@ -121,11 +128,17 @@ fine for a non-commercial / educational project, but check before any
 commercial use.
 
 **What the app shows now**
-The result profile includes the full classification (kingdom → genus),
-habitat, distribution, GBIF biodiversity counts and source links when the
-master table is present, and a new **Explore species** section lets anyone
-browse/search the whole catalogue — so Hilsa and Common Carp have full
-profiles even though the current model cannot predict them yet.
+The app has a single input — one chat-style command bar where you attach a
+photo and can add an optional written note in the same bar, then press
+Identify once. The result profile shows the species name with its full
+classification (kingdom → genus), habitat, distribution, GBIF biodiversity
+counts and source links from the master table, with your note shown
+alongside as context (the note does not change the prediction). There is
+deliberately no name search or catalogue browser — identification is
+photo-only. (Hilsa and Common Carp have full data rows ready for when the
+model is retrained to predict them.) The interface uses a light animated
+river-gradient theme (flowing gradient banner and command bar, fading
+result cards; animations switch off for reduced-motion users).
 
 **Honest limitation:** the catalogue can cover many species long before the
 classifier can. Expanding *identification* beyond the current 8 model classes
