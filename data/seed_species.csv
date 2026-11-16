@@ -1,0 +1,21 @@
+class_id,common_name,local_name,scientific_name,group,mapping_note
+rohu,Rohu,Rui (রুই),Labeo rohita,Fish,From species_info.csv; model class 'rohu'.
+katla,Catla,Katla (কাতলা),Labeo catla,Fish,"Canonical name Labeo catla. species_info.csv lists alternates 'Gibelion catla / Catla catla' in its scientific_name field - kept here as a note only, not as the canonical name. NOTE: the trained model class is spelled 'catla' while this class_id / the CSV use 'katla'; app.py aliases catla -> katla. NOTE: GBIF's accepted genus for this species is Gibelion, so species_master shows genus Gibelion."
+mrigal,Mrigal,Mrigel (মৃগেল),Cirrhinus cirrhosus,Fish,From species_info.csv; model class 'mrigal'.
+grass_carp,Grass carp,Grass carp (গ্রাস কার্প),Ctenopharyngodon idella,Fish,From species_info.csv; model class 'grass_carp'.
+silver_carp,Silver carp,Silver carp (সিলভার কার্প),Hypophthalmichthys molitrix,Fish,From species_info.csv; model class 'silver_carp'.
+common_carp,Common carp,Common carp (কমন কার্প),Cyprinus carpio,Fish,From species_info.csv. No model class yet - browsable in the catalogue only until the classifier is retrained.
+nile_tilapia,Nile tilapia,Tilapia (তেলাপিয়া),Oreochromis niloticus,Fish,From species_info.csv; model class 'nile_tilapia'.
+hilsa,Hilsa shad,Ilish (ইলিশ),Tenualosa ilisha,Fish,From species_info.csv. No model class yet - browsable in the catalogue only until the classifier is retrained.
+freshwater_shark,Freshwater Shark,Boal (বোয়াল),Wallago attu,Fish,"NEEDS VERIFICATION - tentative mapping. Model class 'freshwater_shark' has no row in species_info.csv; Wallago attu (locally Boal) is the usual species sold/taught under this name in Bangladesh, but this was NOT confirmed from Taoshif's training data. Verify against the photos used to train this class before publishing."
+long_whiskered_catfish,Long Whiskered Catfish,Ayre (আইড়),Sperata aor,Fish,"NEEDS VERIFICATION - tentative mapping. Model class 'long_whiskered_catfish' has no row in species_info.csv; Sperata aor (locally Ayre/Aor) is a plausible match for the English name, but this was NOT confirmed from Taoshif's training data. Verify against the photos used to train this class before publishing."
+ganges_river_dolphin,Ganges River Dolphin,Shushuk (শুশুক),Platanista gangetica,Aquatic mammal,Non-fish catalogue species (GBIF exact match). No model class - catalogue only until a gate + classifier are trained.
+irrawaddy_dolphin,Irrawaddy Dolphin,,Orcaella brevirostris,Aquatic mammal,Non-fish catalogue species (GBIF exact match). Local name left blank - not confident of a distinct Bengali name. No model class - catalogue only.
+giant_river_prawn,Giant River Prawn,Golda Chingri (গোলদা চিংড়ি),Macrobrachium rosenbergii,Crustacean,Non-fish catalogue species (GBIF exact match). No model class - catalogue only.
+indian_white_prawn,Indian White Prawn,,Penaeus indicus,Crustacean,Non-fish catalogue species (GBIF exact match). Local name left blank rather than guessed (Bagda is P. monodon, not this species). No model class - catalogue only.
+mud_crab,Mud Crab,,Scylla serrata,Crustacean,Non-fish catalogue species (GBIF exact match). Local name left blank rather than guessed. No model class - catalogue only.
+three_spot_swimming_crab,Three-spot Swimming Crab,,Portunus sanguinolentus,Crustacean,Non-fish catalogue species - GBIF match checked and clean (EXACT / ACCEPTED, key 5178580), so kept. Local name left blank. No model class - catalogue only.
+green_mussel,Green Mussel,,Perna viridis,Mollusk,Non-fish catalogue species (GBIF exact match). Local name left blank. No model class - catalogue only.
+blood_clam,Blood Clam,Teppa,Tegillarca granosa,Mollusk,"Non-fish catalogue species. GBIF accepts Tegillarca granosa; Anadara granosa is a synonym pointing to the same GBIF species key (5855403). No model class - catalogue only."
+freshwater_snail,Apple Snail,,Pila globosa,Mollusk,Non-fish catalogue species (GBIF exact match). Local name left blank rather than guessed. No model class - catalogue only.
+loligo_squid,Indian Ocean Squid,,Uroteuthis duvaucelii,Mollusk,Non-fish catalogue species - GBIF match checked and clean (EXACT / ACCEPTED, key 2290315), so kept. Local name left blank. No model class - catalogue only.
