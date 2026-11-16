@@ -619,15 +619,18 @@ else:
             st.warning("Confidence is not high or the second guess is close. "
                        "Compare with the similar species below.")
 
-    st.write(f"**Prediction confidence:** {conf*100:.1f}%")
-    st.progress(min(max(conf, 0.0), 1.0))
+    if not is_unknown:
+        # Only show confidence/top-3 for an accepted identification — for a
+        # rejected photo they would read as "the app named a species anyway".
+        st.write(f"**Prediction confidence:** {conf*100:.1f}%")
+        st.progress(min(max(conf, 0.0), 1.0))
 
-    st.markdown("**Top 3 predictions**")
-    top3 = pd.DataFrame({
-        "Species": [name_of(class_names[i], info) for i in order[:3]],
-        "Confidence (%)": [round(float(probs[i]) * 100, 1) for i in order[:3]],
-    })
-    st.dataframe(top3, hide_index=True, use_container_width=True)
+        st.markdown("**Top 3 predictions**")
+        top3 = pd.DataFrame({
+            "Species": [name_of(class_names[i], info) for i in order[:3]],
+            "Confidence (%)": [round(float(probs[i]) * 100, 1) for i in order[:3]],
+        })
+        st.dataframe(top3, hide_index=True, use_container_width=True)
 
     if not is_unknown:
         rec = rec_for(top_id, info)
