@@ -114,6 +114,25 @@ scientific-name mappings (Wallago attu / Sperata aor) — they are flagged
 NEEDS VERIFICATION in the output; check them against the training photos
 before publishing.
 
+**Feeding habitat + market value**
+```
+python3 data/build_feeding_market.py                # full build
+python3 data/build_feeding_market.py --prices-only  # refresh prices only
+```
+Each species profile also carries a `feeding_habitat` field (feeding zone +
+diet, built from the species' FishBase / SeaLifeBase "Food items" table, or
+the summary page's own Biology text where no table exists — never invented)
+and Bangladesh market-value fields (`market_price_bdt_kg`, `market_status`,
+`market_source`, `market_asof`). Prices are matched to live listings on
+Chaldal (chaldal.com) and converted to BDT per kg; they are **indicative
+retail snapshots, not official rates**, and vary by size, season and market.
+Species with no online listing get an honest status instead of a made-up
+price (protected species — dolphins, turtles, water monitor — are marked
+"Not sold — protected species"). Because prices move, they are refreshed by
+re-running the script with `--prices-only` (a weekly scheduled refresh does
+exactly this); it re-fetches the listings, updates the price/source/"as of"
+date and prints what changed, without touching the FishBase feeding data.
+
 **Download training photos (openly licensed only)**
 ```
 python3 data/download_photos.py --per-species 100
@@ -157,8 +176,13 @@ Identification is designed as two stages:
 There is **no trained gate model yet**, but the app no longer relies on the
 species model's confidence alone (the species model has only fish classes,
 so by itself it forced *every* image — even a screenshot of text — into a
-fish). The gate now has three layers, all of which must pass before a
-species is shown (see `decide()` in `app.py`):
+fish). The gate now has three layers (see `decide()` in `app.py`); the
+screenshot/document layer is absolute, but a confident species-model match
+— confidence ≥ 0.80 with a clear margin over the runner-up — outranks the
+generic ImageNet layer, since the trained specialist knows its own species
+better than a general filter (the ImageNet tiers previously vetoed photos
+the species model was sure about, because they never looked at its
+confidence):
 
 1. **ImageNet filter** — a MobileNetV2 pretrained on ImageNet (Keras
    downloads the ~14 MB weights at runtime; nothing is stored in this

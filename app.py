@@ -10,8 +10,10 @@ IDENTIFICATION IS TWO-STAGE:
   Stage 2 - SPECIES CLASSIFIER: which catalogue species is it?
 The species model has ONLY fish classes (no unknown_other class), so on its
 own it would force every image -- including a screenshot of text -- into a
-fish species. The gate therefore has three layers, all of which must pass
-before a species is shown (see decide() below):
+fish species. The gate therefore has three layers (see decide() below);
+the screenshot/document layer is absolute, while a confident species-model
+match (high confidence with a clear margin) outranks the generic ImageNet
+layer -- the trained specialist beats the generic filter:
   1. An ImageNet filter: a MobileNetV2 pretrained on ImageNet (weights are
      downloaded by Keras at runtime, ~14 MB, never stored in this repo)
      estimates how much probability mass sits on aquatic-animal classes.
@@ -27,6 +29,7 @@ remains future work and would replace layer 1.
 """
 import html
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -83,6 +86,15 @@ div[data-testid="stVerticalBlockBorderWrapper"] {background: linear-gradient(120
 .ok {background:#cffafe; color:#155e75;} .mid {background:#fef3c7; color:#92400e;} .bad {background:#fee2e2; color:#991b1b;}
 .small {font-size: .82rem;}
 .card .small {color: #475569;}
+/* ---- chat bubbles (Ask AquaPorichoy) ---- */
+.chat-q {background: linear-gradient(120deg,#0e7490,#0284c7); color: white;
+       border-radius: 16px 16px 4px 16px; padding: .6rem .9rem; margin: .35rem 0 .35rem auto;
+       max-width: 85%; width: fit-content; box-shadow: 0 3px 10px rgba(8,145,178,.25);
+       animation: fadeInUp .4s ease both;}
+.chat-a {background: white; color: #0c4a6e; border: 1px solid #bae6fd;
+       border-radius: 16px 16px 16px 4px; padding: .6rem .9rem; margin: .35rem auto .35rem 0;
+       max-width: 92%; width: fit-content; box-shadow: 0 3px 10px rgba(8,145,178,.12);
+       animation: fadeInUp .4s ease both;}
 /* ---- primary Identify button: gradient + hover lift ---- */
 .stButton button[kind="primary"], div.stButton > button {background: linear-gradient(120deg,#0e7490,#0284c7,#059669);
        border: none; color: white; font-weight: 700;
@@ -112,10 +124,18 @@ div[data-testid="stVerticalBlockBorderWrapper"] {animation: fadeInUp .6s ease bo
        transition: transform .25s ease, box-shadow .25s ease;}
 div[data-testid="stVerticalBlockBorderWrapper"]:hover {transform: translateY(-2px);
        box-shadow: 0 10px 26px rgba(8,145,178,.22);}
-/* sidebar: gentle slide-in + water tint */
-section[data-testid="stSidebar"] {background: linear-gradient(180deg,#f0fdfa,#f0f9ff);
-       animation: sidebarIn .5s ease both;}
-@keyframes sidebarIn {from {opacity: 0; transform: translateX(-12px);} to {opacity: 1; transform: translateX(0);}}
+/* sidebar: water tint ONLY -- no width/transform/animation rules. Streamlit
+   owns the sidebar's show/hide state machine (on phones it slides the
+   section with transforms and shows [data-testid="collapsedControl"]);
+   a custom animation with fill-mode "both" pinned transform/opacity on the
+   section and fought that state machine, leaving the sidebar stuck as a
+   narrow letter-stacked strip overlapping the content. */
+section[data-testid="stSidebar"] {background: linear-gradient(180deg,#f0fdfa,#f0f9ff);}
+/* keep Streamlit's sidebar toggle always visible and tappable */
+[data-testid="collapsedControl"] {visibility: visible !important; opacity: 1 !important;
+       z-index: 1000001 !important; background: rgba(255,255,255,.88);
+       border-radius: 0 10px 10px 0; box-shadow: 0 2px 10px rgba(8,145,178,.35);
+       min-width: 2.4rem; min-height: 2.4rem;}
 section[data-testid="stSidebar"] h2 {background: linear-gradient(90deg,#0e7490,#059669);
        -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;}
 /* section headings get the river gradient */
@@ -330,22 +350,53 @@ def is_doc_like(img):
             and f["text_band_fraction"] > DOC_BAND_MIN)
 
 
-def decide(fish_top_id, fish_conf, doc_like, gate):
+def is_blank_like(img):
+    """True if the image is essentially blank/uniform (a solid colour, a
+    blank wall, an empty frame): almost no texture and almost no edges.
+    Such an image cannot contain an identifiable animal, yet the species
+    model will still force a class for it -- reject it up front. Real
+    photos, even blurry or plain-background ones, carry far more texture
+    than these thresholds."""
+    x = ImageOps.exif_transpose(img).convert("L")
+    x.thumbnail((512, 512))
+    arr = np.asarray(x).astype("float32")
+    if float(arr.std()) >= 12.0:
+        return False
+    gx = np.abs(np.diff(arr, axis=1)) > 40
+    gy = np.abs(np.diff(arr, axis=0)) > 40
+    edge_density = float((gx.mean() + gy.mean()) / 2)
+    return edge_density < 0.002
+
+
+def decide(fish_top_id, fish_conf, fish_margin, doc_like, gate, blank_like=False):
     """Combine the three gate layers. Returns (accepted, reason).
 
-    Reject if ANY layer fails:
-      * layer 2: the image looks like a screenshot/document/text;
-      * layer 1: the ImageNet filter is available and either (a) puts
-        < GATE_AQUATIC_MIN total probability on aquatic classes while being
-        itself confident (>= GATE_TOP1_MIN) about a non-aquatic top-1
-        class, or (b) puts < GATE_AQUATIC_HARD_MIN on aquatic classes with
-        a non-aquatic top-1 class and the species model is below
-        GATE_FISH_OVERRIDE;
-      * layer 3: the species model predicts unknown_other or is below
-        LOW_CONF.
+    Priority order:
+      1. layer 2 (screenshot/document detector) is ABSOLUTE -- a document
+         photo once scored rohu 0.91 on the species model, so nothing
+         overrides it;
+      2. a CONFIDENT species-model match (confidence >= HIGH_CONF with a
+         clear margin >= MIN_MARGIN over the runner-up) is ACCEPTED
+         regardless of the ImageNet gate -- the trained specialist outranks
+         the generic filter. (Bug fix: gate Tier A previously vetoed such
+         photos because it never looked at the species confidence.)
+      3. otherwise the original rules apply unchanged: reject if the
+         ImageNet filter (a) puts < GATE_AQUATIC_MIN total probability on
+         aquatic classes while being itself confident (>= GATE_TOP1_MIN)
+         about a non-aquatic top-1 class, or (b) puts
+         < GATE_AQUATIC_HARD_MIN on aquatic classes with a non-aquatic
+         top-1 class and the species model is below GATE_FISH_OVERRIDE;
+         or layer 3: the species model predicts unknown_other or is below
+         LOW_CONF.
     """
     if doc_like:
         return False, "screenshot/document-like image"
+    if blank_like:
+        return False, "blank/uniform image"
+    if fish_top_id == UNKNOWN_CLASS:
+        return False, "species model not confident enough"
+    if fish_conf >= HIGH_CONF and fish_margin >= MIN_MARGIN:
+        return True, ""
     if (gate is not None
             and gate["aquatic_prob"] < GATE_AQUATIC_MIN
             and not gate["top1_aquatic"]
@@ -360,7 +411,7 @@ def decide(fish_top_id, fish_conf, doc_like, gate):
         return False, (f"ImageNet gate (strict): aquatic probability "
                        f"{gate['aquatic_prob']:.1%}, top class "
                        f"'{gate['top1_label']}'")
-    if fish_top_id == UNKNOWN_CLASS or fish_conf < LOW_CONF:
+    if fish_conf < LOW_CONF:
         return False, "species model not confident enough"
     return True, ""
 
@@ -389,6 +440,16 @@ def _present(rec, field):
     return bool(str(rec.get(field, "")).strip())
 
 
+def _fmt_price(val):
+    """Prices are stored as whole BDT; pandas may hand them back as floats
+    (2799.0) -- render those without the trailing .0."""
+    try:
+        f = float(val)
+        return str(int(f)) if f == int(f) else str(f)
+    except (TypeError, ValueError):
+        return str(val)
+
+
 def render_species_profile(rec, info=None):
     """Full species profile from a master/legacy record. Every field is
     optional: partial rows render only what they have, never crash."""
@@ -412,6 +473,17 @@ def render_species_profile(rec, info=None):
         if _present(rec, "distribution"):
             body += f'<h4 style="margin-top:.7rem">Distribution</h4>{e(rec["distribution"])}'
         st.markdown(f'<div class="card">{body}</div>', unsafe_allow_html=True)
+    # --- feeding habitat & diet (FishBase / SeaLifeBase, build_feeding_market.py)
+    if _present(rec, "feeding_habitat"):
+        st.markdown(f"🍽️ **Feeding habitat & diet:** {e(rec['feeding_habitat'])}")
+    # --- Bangladesh market value (indicative retail; refreshed weekly)
+    if _present(rec, "market_price_bdt_kg"):
+        src = f", {e(rec['market_source'])}" if _present(rec, "market_source") else ""
+        asof = f", as of {e(rec['market_asof'])}" if _present(rec, "market_asof") else ""
+        st.markdown(f"🏷️ **Market value (Bangladesh):** ৳{e(_fmt_price(rec['market_price_bdt_kg']))} /kg "
+                    f"— indicative retail{src}{asof}. Prices vary by size, season and market.")
+    elif _present(rec, "market_status"):
+        st.markdown(f"🏷️ **Market value (Bangladesh):** {e(rec['market_status'])}.")
     # --- biodiversity: GBIF occurrence counts
     if _present(rec, "bd_occurrences") or _present(rec, "world_occurrences"):
         bits = []
@@ -443,6 +515,176 @@ def render_species_profile(rec, info=None):
     if _present(rec, "info_status"):
         st.markdown(f'<p class="small">Information status: {e(rec["info_status"])}</p>',
                     unsafe_allow_html=True)
+
+
+# ------------------------------------------------------------------ chat Q&A
+# Built-in assistant: answers ONLY from the species' own data fields (no
+# external LLM, no invented facts). answer_question is a pure function so
+# it can be unit-tested headlessly.
+
+# Words that must never count as a species mention on their own: intent
+# vocabulary ("how COMMON is it?") and generic group words.
+_MENTION_BLOCKLIST = {
+    "common", "price", "cost", "market", "habitat", "where", "found",
+    "live", "lives", "similar", "classification", "family", "order",
+    "genus", "scientific", "local", "name", "bengali", "bangla",
+    "protected", "edible", "safe", "record", "records", "biodiversity",
+    "population", "rare", "diet", "food", "feed", "fish", "river",
+}
+
+
+def _species_mentioned(question_lower, info):
+    """Class id of a species named in the question, or None.
+
+    Matches common_name, local_name (including the Bengali-script part),
+    scientific_name and class_id words as case-insensitive substrings;
+    the longest match wins so "mud crab" beats "crab". A single class_id
+    word (e.g. "tilapia") only counts when it is unique to one species
+    and not an intent/generic word."""
+    word_freq = {}
+    for cid in info:
+        for word in set(cid.split("_")):
+            word_freq[word] = word_freq.get(word, 0) + 1
+    best, best_len = None, 0
+    for cid, rec in info.items():
+        names = set()
+        for field in ("common_name", "scientific_name"):
+            val = str(rec.get(field, "")).strip()
+            if val:
+                names.add(val.lower())
+        local = str(rec.get("local_name", "")).strip()
+        if local:
+            names.add(local.lower())
+            for part in re.split(r"[()]", local):
+                if part.strip():
+                    names.add(part.strip().lower())
+        names.add(cid.replace("_", " "))
+        for word in cid.split("_"):
+            if (len(word) >= 4 and word_freq.get(word, 0) == 1
+                    and word not in _MENTION_BLOCKLIST):
+                names.add(word)
+        for cand in names:
+            if cand and cand in question_lower and len(cand) > best_len:
+                best, best_len = cid, len(cand)
+    return best
+
+
+def answer_question(question, info, context_id):
+    """Answer a question about a species from its data record only.
+
+    Returns (reply_text, species_id_used). If the question names a species,
+    that species becomes the context; otherwise the current context is
+    used. Empty fields get an honest "I don't have that in my data yet".
+    """
+    ql = str(question or "").lower()
+    mentioned = _species_mentioned(ql, info)
+    cid = mentioned or context_id
+    if not cid or not rec_for(cid, info):
+        return ("Please identify a photo first, or ask me about a species by "
+                "name — for example, \"What is the price of Hilsa?\"",
+                context_id)
+    rec = rec_for(cid, info)
+    name = name_of(cid, info)
+    switched = bool(mentioned and mentioned != context_id)
+
+    def has(*words):
+        return any(w in ql for w in words)
+
+    def price_text():
+        if _present(rec, "market_price_bdt_kg"):
+            txt = f"about ৳{_fmt_price(rec['market_price_bdt_kg'])} per kg"
+            if _present(rec, "market_source"):
+                txt += f" ({rec['market_source']}"
+                txt += f", as of {rec['market_asof']}" if _present(rec, "market_asof") else ""
+                txt += ")"
+            return txt
+        return ""
+
+    reply = None
+    if has("price", "cost", "market", "dam", "দাম", "koto dam"):
+        if _present(rec, "market_price_bdt_kg"):
+            reply = (f"The {name} currently sells for {price_text()} in Bangladesh — "
+                     "indicative retail. Prices vary by size, season and market.")
+        elif _present(rec, "market_status"):
+            reply = f"For the {name}, market value: {str(rec['market_status']).rstrip('.')}."
+        else:
+            reply = f"I don't have market information for the {name} in my data yet."
+    elif has("protected", "edible", "eat it", "safe", "can i eat", "can we eat"):
+        status = str(rec.get("market_status", ""))
+        if "protected" in status.lower():
+            reply = (f"Yes — the {name} is a protected species in Bangladesh. "
+                     "It is not sold legally and should not be eaten.")
+        elif _present(rec, "market_price_bdt_kg") or "local markets" in status.lower():
+            reply = f"Yes, the {name} is commonly sold as food in Bangladesh"
+            reply += f", at {price_text()}." if _present(rec, "market_price_bdt_kg") \
+                else " in local markets."
+        else:
+            reply = (f"I don't have information in my data about whether the {name} "
+                     "is protected or eaten — only what's in its profile.")
+    elif has("eat", "diet", "food", "feed", "khay", "খায়", "খাবার"):
+        if _present(rec, "feeding_habitat"):
+            reply = (f"For the {name}, its feeding habitat and diet: "
+                     f"{str(rec['feeding_habitat']).rstrip('.')}.")
+        else:
+            reply = f"I don't have diet information for the {name} in my data yet."
+    elif has("habitat", "live", "found", "where", "river", "sea"):
+        bits = []
+        if _present(rec, "habitat"):
+            bits.append(f"Habitat: {str(rec['habitat']).rstrip('.')}")
+        if _present(rec, "distribution"):
+            bits.append(f"Distribution: {str(rec['distribution']).rstrip('.')}")
+        reply = (". ".join(bits) + ".") if bits else \
+            f"I don't have habitat information for the {name} in my data yet."
+    elif has("similar", "look like", "confus"):
+        sims = [s.strip() for s in str(rec.get("similar_species", "")).split(";") if s.strip()]
+        if sims:
+            display = [name_of(s, info) for s in sims]
+            reply = f"The {name} can be confused with: {', '.join(display)}."
+        else:
+            reply = f"I don't have similar species listed for the {name} in my data yet."
+    elif has("common", "rare", "record", "biodiversity", "population", "koto", "how many"):
+        bits = []
+        if _present(rec, "bd_occurrences"):
+            bits.append(f"{rec['bd_occurrences']} occurrence records in Bangladesh")
+        if _present(rec, "world_occurrences"):
+            bits.append(f"{rec['world_occurrences']} worldwide")
+        if _present(rec, "gbif_photo_records"):
+            bits.append(f"{rec['gbif_photo_records']} with photos")
+        reply = (f"GBIF has {' and '.join(bits)} for the {name}.") if bits else \
+            f"I don't have occurrence records for the {name} in my data yet."
+    elif has("classification", "family", "order", "scientific", "genus"):
+        ranks = [("Kingdom", "kingdom"), ("Phylum", "phylum"), ("Class", "class"),
+                 ("Order", "order"), ("Family", "family"), ("Genus", "genus")]
+        chain = [f"{label}: {rec[field]}" for label, field in ranks if _present(rec, field)]
+        sci = f" Its scientific name is {rec['scientific_name']}." \
+            if _present(rec, "scientific_name") else ""
+        reply = (f"The {name}'s classification — " + " · ".join(chain) + "." + sci) if chain \
+            else f"I don't have classification data for the {name} in my data yet."
+    elif has("local name", "bengali", "bangla"):
+        if _present(rec, "local_name"):
+            reply = f"The local (Bengali) name of the {name} is {rec['local_name']}."
+        else:
+            reply = f"I don't have a local name for the {name} in my data yet."
+    if reply is None:
+        bits = [f"The {name}"]
+        if _present(rec, "scientific_name"):
+            bits[0] += f" ({rec['scientific_name']})"
+        if _present(rec, "group"):
+            bits[0] += f" is a {str(rec['group']).lower()} species found in Bangladesh."
+        else:
+            bits[0] += " is a species found in Bangladesh."
+        if _present(rec, "habitat"):
+            bits.append(f"Habitat: {str(rec['habitat']).rstrip('.')}.")
+        if _present(rec, "market_price_bdt_kg"):
+            bits.append(f"It sells for {price_text()}.")
+        elif _present(rec, "market_status"):
+            bits.append(f"Market: {str(rec['market_status']).rstrip('.')}.")
+        bits.append("You can ask me about its price, diet, habitat, similar species, "
+                    "classification or how common it is.")
+        reply = " ".join(bits)
+    if switched:
+        reply = f"About the {name} — " + reply
+    return reply, cid
 
 
 # ------------------------------------------------------------------ header
@@ -493,6 +735,9 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
        background: linear-gradient(120deg, rgba(6,182,212,.16), rgba(2,132,199,.16), rgba(5,150,105,.16));
        border-color: rgba(103,232,249,.4) !important;}
 section[data-testid="stSidebar"] {background: linear-gradient(180deg,#082f3a,#020617);}
+[data-testid="collapsedControl"] {background: rgba(8,47,73,.92); color: #e0f2f1;}
+.chat-a {background: rgba(8,47,73,.92); border-color: #155e75; color: #e6f4f1;}
+.chat-q {background: linear-gradient(120deg,#155e75,#0369a1); color: #f0fdfa;}
 section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] span {color: #e0f2f1;}
 div[data-testid="stTextInput"] input {background: #0f2f42; color: #f0fdfa;}
@@ -592,7 +837,8 @@ else:
     top, second = int(order[0]), int(order[1])
     top_id, conf = class_names[top], float(probs[top])
     margin = conf - float(probs[second])
-    accepted, _gate_reason = decide(top_id, conf, doc_like, gate)
+    accepted, _gate_reason = decide(top_id, conf, margin, doc_like, gate,
+                                    blank_like=is_blank_like(image))
     is_unknown = not accepted
 
     if is_unknown:
@@ -620,6 +866,8 @@ else:
                        "Compare with the similar species below.")
 
     if not is_unknown:
+        # The chat assistant now talks about this species by default.
+        st.session_state["chat_species"] = top_id
         # Only show confidence/top-3 for an accepted identification — for a
         # rejected photo they would read as "the app named a species anyway".
         st.write(f"**Prediction confidence:** {conf*100:.1f}%")
@@ -638,6 +886,58 @@ else:
             render_species_profile(rec, info)
         else:
             st.warning("No biological information is stored for this species yet.")
+
+# ------------------------------------------------------------------ chat UI
+st.subheader("💬 Ask AquaPorichoy")
+st.caption("Ask about a species — its price, diet, habitat, similar species, "
+           "classification or how common it is. Answers come only from the "
+           "species data above, never guessed.")
+if "chat_history" not in st.session_state:
+    st.session_state["chat_history"] = []
+if "chat_species" not in st.session_state:
+    st.session_state["chat_species"] = None
+
+
+def _ask_chat(text):
+    text = str(text or "").strip()
+    if not text:
+        return
+    reply, used = answer_question(text, info, st.session_state.get("chat_species"))
+    st.session_state["chat_history"].append({"role": "user", "text": text})
+    st.session_state["chat_history"].append({"role": "assistant", "text": reply})
+    if used:
+        st.session_state["chat_species"] = used
+
+
+for _msg in st.session_state["chat_history"]:
+    _cls = "chat-q" if _msg["role"] == "user" else "chat-a"
+    st.markdown(f'<div class="{_cls}">{e(_msg["text"])}</div>', unsafe_allow_html=True)
+
+_CHIPS = [("💰 Price", "What is the price?"),
+          ("🍽️ What does it eat?", "What does it eat?"),
+          ("🌊 Where is it found?", "Where is it found?"),
+          ("🐟 Similar species", "Which species are similar?"),
+          ("📊 How common is it?", "How common is it?"),
+          ("🔬 Classification", "What is its classification?")]
+_chip_cols = st.columns(len(_CHIPS))
+for _col, (_label, _question) in zip(_chip_cols, _CHIPS):
+    with _col:
+        if st.button(_label, key=f"chip_{_label}", use_container_width=True):
+            _ask_chat(_question)
+            st.rerun()
+
+with st.form("chat_form", clear_on_submit=True):
+    _typed = st.text_input("Ask about a species",
+                           placeholder="e.g. What is the price of Hilsa?",
+                           label_visibility="collapsed")
+    _sent = st.form_submit_button("Ask")
+if _sent and _typed.strip():
+    _ask_chat(_typed)
+    st.rerun()
+if st.session_state["chat_history"]:
+    if st.button("Clear chat", key="clear_chat"):
+        st.session_state["chat_history"] = []
+        st.rerun()
 
 st.divider()
 st.caption("AI predictions are estimates and not a substitute for expert taxonomic identification.")
